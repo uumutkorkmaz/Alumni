@@ -1,101 +1,31 @@
 # Alumni Tracking System
 
-Istanbul Üniversitesi İşletme Fakültesi mezunlarını takip etmek için geliştirilen backend sistemi. **FastAPI** ve **PostgreSQL** ile yazılmış, **Docker** üzerinden tek komutla ayağa kalkacak şekilde tasarlanmıştır.
+A backend system to track Management Information Systems (MIS) graduates, built for the Web Programming (YBSB3001) course.
 
-## Proje Hakkında
+## Tech Stack
 
-Bu sistem, mezunların kayıtlarını, iletişim bilgilerini ve etkinlik katılımlarını yönetmek amacıyla geliştirilmektedir. Web Programming (YBSB3001) dersi kapsamında, her hafta tek bir mekanizma üzerinden inşa edilmiş, katmanlı bir mimariye sahiptir.
+- **Backend:** FastAPI (Python)
+- **Database:** PostgreSQL
+- **Containerization:** Docker & Docker Compose
 
-## Teknoloji Yığını
+## Running the Project
 
-| Katman | Teknoloji |
-|---|---|
-| Backend | FastAPI (Python) |
-| Veritabanı | PostgreSQL |
-| ORM | SQLAlchemy |
-| Migration | Alembic |
-| Konteynerizasyon | Docker & Docker Compose |
-| Kimlik Doğrulama | JWT (python-jose, passlib) |
-
-## Mimari
-
-Proje, sorumlulukların net şekilde ayrıldığı katmanlı bir mimari kullanır:
-
-```
-alumni/
-├── docker-compose.yml
-├── Dockerfile
-├── .env
-├── alembic/                  # Veritabanı migration'ları
-├── app/
-│   ├── main.py                # FastAPI giriş noktası
-│   ├── core/
-│   │   ├── config.py           # Ortam değişkenleri ve ayarlar
-│   │   └── security.py         # JWT, şifreleme
-│   ├── api/
-│   │   └── routers/            # HTTP endpoint'leri
-│   │       ├── alumni.py
-│   │       └── auth.py
-│   ├── models/                 # SQLAlchemy modelleri (tablolar)
-│   ├── schemas/                 # Pydantic şemaları (request/response)
-│   ├── services/                # İş mantığı katmanı
-│   ├── db/
-│   │   ├── base.py              # SQLAlchemy Base, engine, session
-│   │   └── session.py
-│   └── middleware/               # Loglama, auth kontrolü vb.
-└── README.md
-```
-
-**Katman sorumlulukları:**
-
-- **Router** — HTTP isteğini karşılar, ilgili service'i çağırır, response döner. İş mantığı içermez.
-- **Service** — Asıl iş mantığı burada yaşar; router'lar sadece service'leri çağırır.
-- **Model** — Veritabanı tablolarını temsil eder (SQLAlchemy).
-- **Schema** — API'nin dışarıya açtığı veri şeklini temsil eder (Pydantic), model ile birebir aynı olmak zorunda değildir.
-- **Middleware** — Her isteği kesen ortak kontroller (auth, loglama) burada toplanır.
-
-## Kurulum ve Çalıştırma
-
-### Gereksinimler
-
-- Docker
-- Docker Compose
-
-### Adımlar
-
-1. Depoyu klonlayın:
+1. Clone the repository:
    ```bash
-   git clone https://github.com/<kullanici-adiniz>/alumni.git
+   git clone https://github.com/<your-username>/alumni.git
    cd alumni
    ```
 
-2. `.env` dosyasını oluşturun (örnek için `.env.example` dosyasına bakınız):
-   ```bash
-   cp .env.example .env
-   ```
-
-3. Sistemi tek komutla ayağa kaldırın:
+2. Start the system:
    ```bash
    docker compose up
    ```
 
-4. API dokümantasyonuna tarayıcıdan erişin:
+3. API docs will be available at:
    ```
    http://localhost:8000/docs
    ```
 
-### Veritabanı Migration'ları
+## Status
 
-Yeni bir migration oluşturmak için:
-```bash
-docker compose exec api alembic revision --autogenerate -m "mesaj"
-docker compose exec api alembic upgrade head
-```
-
-## Geliştirme Durumu
-
-Proje, her hafta işlenen konuya paralel olarak aşamalı şekilde geliştirilmektedir. İlerleme commit geçmişinden takip edilebilir.
-
-## Lisans
-
-Bu proje Istanbul Üniversitesi Web Programming dersi kapsamında eğitim amaçlı geliştirilmiştir.
+Work in progress — built incrementally week by week.

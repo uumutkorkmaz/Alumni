@@ -1,0 +1,25 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/code/app
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://alumni:alumni@db:5432/alumni
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: alumni
+      POSTGRES_PASSWORD: alumni
+      POSTGRES_DB: alumni
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

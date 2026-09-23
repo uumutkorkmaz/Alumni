@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>About - Alumni Tracking System</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: #151f38;
+      --panel-border: #24314f;
+      --accent: #38bdf8;
+      --accent-2: #a78bfa;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(56, 189, 248, 0.15), transparent 40%),
+        radial-gradient(circle at 85% 0%, rgba(167, 139, 250, 0.15), transparent 40%),
+        var(--bg);
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 24px 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 800;
+      color: #0b1120;
+    }
+    nav .nav-links {
+      display: flex;
+      gap: 28px;
+      font-size: 14px;
+    }
+    nav .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    nav .nav-links a:hover,
+    nav .nav-links a.active {
+      color: var(--text);
+    }
+
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 72px 24px 96px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+      border: 1px solid rgba(167, 139, 250, 0.4);
+      background: rgba(167, 139, 250, 0.08);
+      border-radius: 999px;
+      padding: 6px 14px;
+      margin-bottom: 24px;
+    }
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-2);
+    }
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(28px, 4vw, 40px);
+      letter-spacing: -0.02em;
+    }
+    .lead {
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.7;
+      margin: 0 0 40px;
+      max-width: 620px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .info-card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 22px;
+    }
+    .info-card h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .info-card p {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .timeline {
+      border-left: 2px solid var(--panel-border);
+      margin-left: 6px;
+      padding-left: 24px;
+    }
+    .timeline-item {
+      position: relative;
+      padding-bottom: 24px;
+    }
+    .timeline-item:last-child { padding-bottom: 0; }
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -29px;
+      top: 4px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.15);
+    }
+    .timeline-item h4 {
+      margin: 0 0 4px;
+      font-size: 15px;
+    }
+    .timeline-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .status {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 48px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      transition: transform 0.15s ease;
+    }
+    .back:hover { transform: translateY(-1px); }
+
+    footer {
+      border-top: 1px solid var(--panel-border);
+      padding: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="brand">
+      <span class="brand-mark">AT</span>
+      Alumni Tracking
+    </div>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/about" class="active">About</a>
+      <a href="/docs">API Docs</a>
+    </div>
+  </nav>
+
+  <main>
+    <span class="badge">Temporary Page</span>
+    <h1>Proje Hakkında</h1>
+    <p class="lead">
+      Alumni Tracking System, Yönetim Bilişim Sistemleri (MIS) mezunlarının
+      kariyer bilgilerini takip etmek amacıyla Web Programming (YBSB3001)
+      dersi kapsamında geliştirilen bir backend sistemidir.
+    </p>
+
+    <div class="grid">
+      <div class="info-card">
+        <h3>Ders</h3>
+        <p>YBSB3001 &mdash; Web Programming</p>
+      </div>
+      <div class="info-card">
+        <h3>Durum</h3>
+        <p class="status">Geliştirme aşamasında</p>
+      </div>
+      <div class="info-card">
+        <h3>Backend</h3>
+        <p>FastAPI (Python)</p>
+      </div>
+      <div class="info-card">
+        <h3>Veritabanı</h3>
+        <p>PostgreSQL</p>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <h4>Temel API iskeleti</h4>
+        <p>FastAPI projesi kuruldu, Docker &amp; Docker Compose ile çalışır hale getirildi.</p>
+      </div>
+      <div class="timeline-item">
+        <h4>Örnek endpoint&apos;ler</h4>
+        <p>/hello, /hello/{name} ve /sum/{a}/{b} gibi test amaçlı route&apos;lar eklendi.</p>
+      </div>
+      <div class="timeline-item">
+        <h4>Geçici ana sayfa &amp; about</h4>
+        <p>Tek sayfalık landing page ve bu about sayfası eklendi.</p>
+      </div>
+      <div class="timeline-item">
+        <h4>Sırada: Mezun modeli &amp; veritabanı</h4>
+        <p>PostgreSQL entegrasyonu ve gerçek alumni endpoint&apos;leri geliştirilecek.</p>
+      </div>
+    </div>
+
+    <a class="back" href="/">&larr; Ana sayfaya dön</a>
+  </main>
+
+  <footer>YBSB3001 &mdash; Web Programming</footer>
+</body>
+</html>

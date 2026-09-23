@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alumni Tracking System</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --bg-soft: #111a2e;
+      --panel: #151f38;
+      --panel-border: #24314f;
+      --accent: #38bdf8;
+      --accent-2: #a78bfa;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(56, 189, 248, 0.15), transparent 40%),
+        radial-gradient(circle at 85% 0%, rgba(167, 139, 250, 0.15), transparent 40%),
+        var(--bg);
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 24px 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.01em;
+    }
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 800;
+      color: #0b1120;
+    }
+    nav .nav-links {
+      display: flex;
+      gap: 28px;
+      font-size: 14px;
+    }
+    nav .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    nav .nav-links a:hover,
+    nav .nav-links a.active {
+      color: var(--text);
+    }
+
+    .hero {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 88px 24px 64px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      background: rgba(56, 189, 248, 0.08);
+      border-radius: 999px;
+      padding: 6px 14px;
+      margin-bottom: 28px;
+    }
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    h1 {
+      margin: 0 0 18px;
+      font-size: clamp(32px, 5vw, 52px);
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+    h1 span {
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .lead {
+      max-width: 560px;
+      margin: 0 auto 36px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.65;
+    }
+    .cta {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      padding: 12px 22px;
+      border-radius: 10px;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      color: #0b1120;
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    }
+    .btn-ghost {
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+    }
+
+    .features {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px 96px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 26px 22px;
+      text-align: left;
+    }
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(56, 189, 248, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    .feature h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    footer {
+      border-top: 1px solid var(--panel-border);
+      padding: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 720px) {
+      .features { grid-template-columns: 1fr; }
+      nav .nav-links { gap: 16px; font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="brand">
+      <span class="brand-mark">AT</span>
+      Alumni Tracking
+    </div>
+    <div class="nav-links">
+      <a href="/" class="active">Home</a>
+      <a href="/about">About</a>
+      <a href="/docs">API Docs</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <span class="badge">Work in Progress</span>
+    <h1>MIS mezunlarını <span>tek yerden</span> takip edin</h1>
+    <p class="lead">
+      Alumni Tracking System, Yönetim Bilişim Sistemleri mezunlarının
+      kariyer verilerini toplamak ve izlemek için geliştirilen bir backend
+      sistemidir. Hafta hafta, adım adım inşa ediliyor.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="/docs">API Dokümantasyonu</a>
+      <a class="btn btn-ghost" href="/about">Proje Hakkında</a>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="feature">
+      <div class="feature-icon">⚡</div>
+      <h3>FastAPI</h3>
+      <p>Hızlı, tip güvenli ve otomatik dokümantasyona sahip modern bir Python backend framework&apos;ü.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🗄️</div>
+      <h3>PostgreSQL</h3>
+      <p>Mezun verilerini güvenilir ve ölçeklenebilir bir ilişkisel veritabanında saklıyoruz.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🐳</div>
+      <h3>Docker</h3>
+      <p>Tüm sistem konteynerler içinde çalışır; tek komutla ayağa kalkar.</p>
+    </div>
+  </section>
+
+  <footer>YBSB3001 &mdash; Web Programming</footer>
+</body>
+</html>

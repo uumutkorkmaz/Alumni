@@ -3,6 +3,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.controllers.announcement_controller import AnnouncementController
+from app.controllers.api_announcement_controller import ApiAnnouncementController
 from app.controllers.api_user_controller import ApiUserController
 from app.controllers.user_controller import UserController
 
@@ -16,6 +18,11 @@ user_controller = UserController()
 api_user_controller = ApiUserController()
 app.include_router(user_controller.router)
 app.include_router(api_user_controller.router)
+
+announcement_controller = AnnouncementController()
+api_announcement_controller = ApiAnnouncementController()
+app.include_router(announcement_controller.router)
+app.include_router(api_announcement_controller.router)
 
 
 @app.get("/", response_class=HTMLResponse)

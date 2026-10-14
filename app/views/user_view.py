@@ -1,3 +1,5 @@
+from app.views.layout import NAV_STYLE, render_nav
+
 PAGE_STYLE = """
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -29,10 +31,13 @@ def _page(title: str, body: str) -> str:
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{title}</title>
   {PAGE_STYLE}
+  {NAV_STYLE}
 </head>
 <body>
+  {render_nav("/users")}
   <div class="wrap">
     {body}
   </div>

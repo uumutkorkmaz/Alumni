@@ -1,5 +1,6 @@
 from html import escape
 
+from app.views.layout import NAV_STYLE, render_nav
 from app.views.user_view import PAGE_STYLE
 
 EXTRA_STYLE = """
@@ -17,11 +18,14 @@ def _page(title: str, body: str) -> str:
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{escape(title)}</title>
   {PAGE_STYLE}
   {EXTRA_STYLE}
+  {NAV_STYLE}
 </head>
 <body>
+  {render_nav("/announcements")}
   <div class="wrap">
     {body}
   </div>

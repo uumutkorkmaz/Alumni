@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Form
+from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 
 from app.models import announcement as announcement_model
 from app.models.announcement import AnnouncementCreate, AnnouncementUpdate
@@ -31,7 +32,10 @@ class AnnouncementController:
         content: str = Form(...),
         author: str = Form(...),
     ) -> RedirectResponse:
-        data = AnnouncementCreate(title=title, content=content, author=author)
+        try:
+            data = AnnouncementCreate(title=title, content=content, author=author)
+        except ValidationError as error:
+            raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         announcement_model.create_announcement(data)
         return RedirectResponse(url="/announcements", status_code=303)
 
@@ -51,7 +55,10 @@ class AnnouncementController:
         content: str = Form(...),
         author: str = Form(...),
     ) -> RedirectResponse:
-        data = AnnouncementUpdate(title=title, content=content, author=author)
+        try:
+            data = AnnouncementUpdate(title=title, content=content, author=author)
+        except ValidationError as error:
+            raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         announcement_model.partial_update_announcement(announcement_id, data)
         return RedirectResponse(url=f"/announcements/{announcement_id}", status_code=303)
 

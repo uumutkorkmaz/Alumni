@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Form
+from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 
 from app.models import user as user_model
 from app.models.user import UserCreate, UserUpdate
@@ -31,9 +32,12 @@ class UserController:
         department: str = Form(...),
     ) -> RedirectResponse:
         """POST /users -> creating (C): creates the user then redirects back to the listing."""
-        data = UserCreate(
-            name=name, email=email, graduation_year=graduation_year, department=department
-        )
+        try:
+            data = UserCreate(
+                name=name, email=email, graduation_year=graduation_year, department=department
+            )
+        except ValidationError as error:
+            raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         user_model.create_user(data)
         return RedirectResponse(url="/users", status_code=303)
 
@@ -57,9 +61,12 @@ class UserController:
     ) -> RedirectResponse:
         """POST /users/{id}/edit -> updating (U): HTML forms can't send PUT/PATCH,
         so the edit form submits here instead; redirects back to the detail page."""
-        data = UserUpdate(
-            name=name, email=email, graduation_year=graduation_year, department=department
-        )
+        try:
+            data = UserUpdate(
+                name=name, email=email, graduation_year=graduation_year, department=department
+            )
+        except ValidationError as error:
+            raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         user_model.partial_update_user(user_id, data)
         return RedirectResponse(url=f"/users/{user_id}", status_code=303)
 

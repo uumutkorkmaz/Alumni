@@ -5,6 +5,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.controllers.announcement_controller import AnnouncementController
 from app.controllers.api_announcement_controller import ApiAnnouncementController
+from app.controllers.api_application_controller import ApiApplicationController
+from app.controllers.api_job_posting_controller import ApiJobPostingController
 from app.controllers.api_user_controller import ApiUserController
 from app.controllers.user_controller import UserController
 
@@ -23,6 +25,15 @@ announcement_controller = AnnouncementController()
 api_announcement_controller = ApiAnnouncementController()
 app.include_router(announcement_controller.router)
 app.include_router(api_announcement_controller.router)
+
+api_job_posting_controller = ApiJobPostingController()
+app.include_router(api_job_posting_controller.router)
+app.include_router(api_job_posting_controller.nested_router)
+
+api_application_controller = ApiApplicationController()
+app.include_router(api_application_controller.router)
+app.include_router(api_application_controller.user_router)
+app.include_router(api_application_controller.posting_router)
 
 
 @app.get("/", response_class=HTMLResponse)

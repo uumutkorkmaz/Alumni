@@ -1,11 +1,51 @@
+from datetime import datetime
+from typing import TYPE_CHECKING
+
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import TIMESTAMP, CheckConstraint, String, UniqueConstraint, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.connection import get_engine
+from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.application import Application
+    from app.models.job_posting import JobPosting
 
 COLUMNS = "id, name, email, graduation_year, department"
+
+
+class User(Base):
+    """ORM model for the users table (ddd.md section 4.1)."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_users_email"),
+        CheckConstraint("graduation_year BETWEEN 1950 AND 2100", name="ck_users_graduation_year"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(255))
+    graduation_year: Mapped[int]
+    department: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(), server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(), server_default=text("CURRENT_TIMESTAMP"))
+
+    # One user -> many job postings. passive_deletes lets PostgreSQL's ON DELETE SET NULL
+    # clear posted_by_user_id instead of the ORM loading every posting first.
+    job_postings: Mapped[list["JobPosting"]] = relationship(back_populates="posted_by", passive_deletes=True)
+
+    # One user -> many applications. ON DELETE CASCADE removes them in the database; the ORM
+    # cascade is declared too so deleting a User object never tries to null the NOT NULL user_id.
+    applications: Mapped[list["Application"]] = relationship(
+        back_populates="applicant", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<User id={self.id} email={self.email!r}>"
 
 
 class UserCreate(BaseModel):

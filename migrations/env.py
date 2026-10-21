@@ -8,8 +8,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Migrations are written by hand against ddd.md, so there is no model metadata to autogenerate from.
-target_metadata = None
+from app.models import Base
+
+# Migrations are written by hand from ddd.md. The ORM metadata lets `alembic check` (and
+# `alembic revision --autogenerate`) compare the models against the migrated schema.
+target_metadata = Base.metadata
 
 
 def get_url() -> str:

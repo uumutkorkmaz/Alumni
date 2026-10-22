@@ -124,6 +124,21 @@ HTML forms can only send GET/POST, so update and delete use POST sub-routes.
 | GET | `/announcements/{id}/edit` | Edit form |
 | POST | `/announcements/{id}/edit` | Update an announcement |
 | POST | `/announcements/{id}/delete` | Delete an announcement |
+| GET | `/job-postings` | Job posting list + create form (`JobPosting` tag in Swagger) |
+| POST | `/job-postings` | Create a job posting (form submit) |
+| GET | `/job-postings/{id}` | Posting detail page: its applicants and an apply form |
+| GET | `/job-postings/{id}/edit` | Edit form |
+| POST | `/job-postings/{id}/edit` | Update a job posting |
+| POST | `/job-postings/{id}/delete` | Delete a job posting (its applications go with it) |
+| POST | `/job-postings/{id}/apply` | Apply to this posting from its page (shows a message if refused) |
+| GET | `/applications` | Application list, status change, delete and a new-application form (`Application` tag in Swagger) |
+| POST | `/applications` | Apply (form submit; a duplicate or a closed posting shows a message above the table) |
+| POST | `/applications/{id}/status` | Change the status of an application |
+| POST | `/applications/{id}/delete` | Delete (withdraw) an application |
+
+The home page (`/`) and every page share one navbar: Home, About, Users, Announcements, Job Postings, Applications, API Docs. The home page also shows live counters (graduates, announcements, job postings, applications) that link to those pages, and it still opens when the database is down (the counters show a dash).
+
+**User interface:** every page uses the same stylesheet (`app/static/app.css`, served at `/static/app.css`), so the whole site looks alike and works on phone screens too. List pages have a filter box that narrows the table as you type, a `+ New ...` button that jumps to the create form, and a confirmation question before anything is deleted. Detail and edit pages use cards; status values use coloured badges; a refused action (for example applying twice) shows a red message at the top of the page.
 
 ### JSON API (Postman / Swagger)
 
@@ -184,11 +199,14 @@ AlumniTrackingSystem/
 │   │   ├── api_user_controller.py               # ApiUserController -> JSON under /api/users
 │   │   ├── announcement_controller.py           # AnnouncementController -> HTML pages under /announcements
 │   │   ├── api_announcement_controller.py       # ApiAnnouncementController -> JSON under /api/announcements
+│   │   ├── job_posting_controller.py            # JobPostingController -> HTML pages under /job-postings
+│   │   ├── application_controller.py            # ApplicationController -> HTML pages under /applications
 │   │   ├── api_job_posting_controller.py        # ApiJobPostingController -> direct + nested JSON routes
 │   │   └── api_application_controller.py        # ApiApplicationController -> direct + nested (user, posting) JSON routes
 │   ├── database/
 │   │   ├── __init__.py
 │   │   ├── connection.py                        # DB connection from DATABASE_URL
+│   │   ├── stats.py                             # Row counts for the home page counters
 │   │   ├── factories.py                         # UserFactory, AnnouncementFactory (fake data)
 │   │   └── seed.py                              # Seeder: inserts fake data into the tables
 │   ├── models/
@@ -200,10 +218,14 @@ AlumniTrackingSystem/
 │   │   └── application.py                       # Application ORM model + application functions (table from migration 0003)
 │   ├── views/
 │   │   ├── __init__.py
-│   │   ├── layout.py                            # Shared navbar for the management pages
+│   │   ├── layout.py                            # Shared page skeleton: navbar, footer, helpers (render_page, page_header, ...)
 │   │   ├── user_view.py                         # HTML for user list/detail/edit pages
-│   │   └── announcement_view.py                 # HTML for announcement list/detail/edit pages
-│   └── templates/                               # Static HTML pages
+│   │   ├── announcement_view.py                 # HTML for announcement list/detail/edit pages
+│   │   ├── job_posting_view.py                  # HTML for job posting list/detail/edit pages
+│   │   └── application_view.py                  # HTML for the application list page
+│   ├── static/
+│   │   └── app.css                              # The one stylesheet used by every page
+│   └── templates/                               # Page bodies of / and /about (the layout adds navbar and footer)
 │       ├── index.html
 │       └── about.html
 ├── migrations/                                  # Alembic migrations (database schema)
@@ -226,8 +248,8 @@ AlumniTrackingSystem/
 | Layer | Location | Responsibility |
 | --- | --- | --- |
 | **Model** | `app/models/user.py`, `app/models/announcement.py` — SQLAlchemy ORM models (`User`, `Announcement`, `JobPosting`, `Application`, with the `User.job_postings` ↔ `JobPosting.posted_by` relationship and `Application` linking `User` and `JobPosting`), Pydantic schemas (`UserCreate`/`UserUpdate`, `AnnouncementCreate`/`AnnouncementUpdate`) and CRUD functions that run SQL against PostgreSQL | Defines the tables, their relationships and the validation of the data, and reads/writes it in the database (described in [ddd.md](ddd.md)). |
-| **View** | `app/views/user_view.py`, `app/views/announcement_view.py` (management pages), `app/templates/` (static `/` and `/about` pages) | Builds the HTML returned to the browser. For the JSON API routes, the JSON response itself is the "view" served to API clients (Postman, Swagger UI). |
-| **Controller** | Two independent controllers per resource: `UserController` + `ApiUserController`, `AnnouncementController` + `ApiAnnouncementController` | Each controller has its own CRUD methods and its own `APIRouter`. The plain controller serves HTML pages; the `Api...` controller serves JSON. `main.py` registers all four routers with `app.include_router(...)`. |
+| **View** | `app/views/user_view.py`, `announcement_view.py`, `job_posting_view.py`, `application_view.py` (management pages; `layout.py` holds the shared navbar and page skeleton), `app/templates/` (static `/` and `/about` pages) | Builds the HTML returned to the browser. For the JSON API routes, the JSON response itself is the "view" served to API clients (Postman, Swagger UI). |
+| **Controller** | Two independent controllers per resource: `UserController` + `ApiUserController`, `AnnouncementController` + `ApiAnnouncementController`, `JobPostingController` + `ApiJobPostingController`, `ApplicationController` + `ApiApplicationController` | Each controller has its own methods and its own `APIRouter`. The plain controller serves HTML pages; the `Api...` controller serves JSON. `main.py` registers all the routers with `app.include_router(...)`. |
 
 ## Status
 

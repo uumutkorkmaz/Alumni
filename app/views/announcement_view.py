@@ -1,104 +1,88 @@
 from html import escape
 
-from app.views.layout import NAV_STYLE, render_nav
-from app.views.user_view import PAGE_STYLE
+from app.views.layout import filter_toolbar, new_button, page_header, plural, render_page, row_actions
 
-EXTRA_STYLE = """
-  <style>
-    textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid #24314f;
-               background: #151f38; color: #e2e8f0; min-height: 100px; font-family: inherit; }
-    .content { white-space: pre-wrap; line-height: 1.6; }
-    .meta { color: #94a3b8; font-size: 13px; margin-bottom: 16px; }
-  </style>
-"""
+ACTIVE = "/announcements"
 
 
-def _page(title: str, body: str) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{escape(title)}</title>
-  {PAGE_STYLE}
-  {EXTRA_STYLE}
-  {NAV_STYLE}
-</head>
-<body>
-  {render_nav("/announcements")}
-  <div class="wrap">
-    {body}
-  </div>
-</body>
-</html>"""
+def _row(a: dict) -> str:
+    base = f"/announcements/{a['id']}"
+    return (
+        f"<tr><td>{a['id']}</td>"
+        f'<td><a href="{base}">{escape(a["title"])}</a></td>'
+        f"<td>{escape(a['author'])}</td><td class=\"nowrap\">{a['created_at']}</td>"
+        f'<td class="col-actions">{row_actions(base, "announcement")}</td></tr>'
+    )
 
 
 def render_announcement_list(announcements: list[dict]) -> str:
-    rows = "".join(
-        f"<tr><td>{a['id']}</td><td>{escape(a['title'])}</td><td>{escape(a['author'])}</td>"
-        f"<td>{a['created_at']}</td>"
-        f"<td>"
-        f'<a href="/announcements/{a["id"]}">View</a> | '
-        f'<a href="/announcements/{a["id"]}/edit">Edit</a> | '
-        f'<form class="inline-form" method="post" action="/announcements/{a["id"]}/delete">'
-        f'<button type="submit" class="danger">Delete</button></form>'
-        f"</td></tr>"
-        for a in announcements
+    rows = "".join(_row(a) for a in announcements) or (
+        '<tr><td class="empty" colspan="5">No announcements yet. Publish the first one below.</td></tr>'
     )
-    if not rows:
-        rows = '<tr><td colspan="5">No announcements yet.</td></tr>'
 
     body = f"""
-    <h1>Announcements</h1>
-    <table>
-      <tr><th>ID</th><th>Title</th><th>Author</th><th>Created</th><th>Actions</th></tr>
-      {rows}
-    </table>
+    {page_header("Announcements", "News and notices for graduates.", new_button("New announcement"))}
+    {filter_toolbar("announcements-table", plural(len(announcements), "announcement"))}
+    <div class="table-wrap">
+      <table id="announcements-table">
+        <thead><tr><th>ID</th><th>Title</th><th>Author</th><th>Created</th><th></th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>
 
-    <h1>Add Announcement</h1>
-    {_announcement_form(action="/announcements")}
+    <section class="card" id="new" style="margin-top: 32px">
+      <h2>Add announcement</h2>
+      {_announcement_form(action="/announcements")}
+    </section>
     """
-    return _page("Announcements", body)
+    return render_page("Announcements", body, ACTIVE)
 
 
 def render_announcement_detail(announcement: dict) -> str:
     a = announcement
     body = f"""
-    <h1>{escape(a['title'])}</h1>
-    <p class="meta">#{a['id']} &middot; {escape(a['author'])} &middot; {a['created_at']}</p>
-    <p class="content">{escape(a['content'])}</p>
-    <p>
-      <a href="/announcements/{a['id']}/edit">Edit</a> |
-      <a href="/announcements">Back to list</a>
-    </p>
+    <article>
+      <h1>{escape(a['title'])}</h1>
+      <p class="meta"><span>#{a['id']}</span><span>{escape(a['author'])}</span><span>{a['created_at']}</span></p>
+    </article>
+    <section class="card" style="margin-top: 24px">
+      <p class="content">{escape(a['content'])}</p>
+      <div class="detail-actions">
+        <a class="btn btn-primary" href="/announcements/{a['id']}/edit">Edit</a>
+      </div>
+    </section>
+    <a class="back-link" href="/announcements">&larr; Back to announcements</a>
     """
-    return _page(a["title"], body)
+    return render_page(a["title"], body, ACTIVE, narrow=True)
 
 
 def render_announcement_edit_form(announcement: dict) -> str:
     a = announcement
     body = f"""
-    <h1>Edit Announcement #{a['id']}</h1>
-    {_announcement_form(action=f"/announcements/{a['id']}/edit", announcement=a)}
-    <p><a href="/announcements">Back to list</a></p>
+    {page_header("Edit announcement", f"Announcement #{a['id']}")}
+    <section class="card">
+      {_announcement_form(action=f"/announcements/{a['id']}/edit", announcement=a)}
+    </section>
+    <a class="back-link" href="/announcements">&larr; Back to announcements</a>
     """
-    return _page(f"Edit Announcement #{a['id']}", body)
+    return render_page("Edit announcement", body, ACTIVE, narrow=True)
 
 
 def _announcement_form(action: str, announcement: dict | None = None) -> str:
-    title = escape(announcement["title"]) if announcement else ""
-    content = escape(announcement["content"]) if announcement else ""
-    author = escape(announcement["author"]) if announcement else ""
-    submit_label = "Save" if announcement else "Create"
+    a = announcement or {}
 
+    def value(key: str) -> str:
+        return escape(str(a.get(key, "")))
+
+    submit_label = "Save changes" if announcement else "Publish"
     return f"""
-    <form method="post" action="{action}">
-      <label>Title</label>
-      <input type="text" name="title" value="{title}" required />
-      <label>Content</label>
-      <textarea name="content" required>{content}</textarea>
-      <label>Author</label>
-      <input type="text" name="author" value="{author}" required />
-      <button type="submit">{submit_label}</button>
+    <form class="form-grid" method="post" action="{action}">
+      <div class="field"><label for="title">Title</label>
+        <input id="title" type="text" name="title" value="{value('title')}" maxlength="200" required /></div>
+      <div class="field"><label for="author">Author</label>
+        <input id="author" type="text" name="author" value="{value('author')}" maxlength="100" required /></div>
+      <div class="field full"><label for="content">Content</label>
+        <textarea id="content" name="content" required>{value('content')}</textarea></div>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">{submit_label}</button></div>
     </form>
     """

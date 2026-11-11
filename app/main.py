@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -13,9 +14,24 @@ from app.controllers.application_controller import ApplicationController
 from app.controllers.job_posting_controller import JobPostingController
 from app.controllers.user_controller import UserController
 from app.database.stats import get_counts
+from app.middleware.logger import log_requests
+from app.middleware.not_found_guardian import not_found_guardian
+from app.middleware.server_error_guardian import server_error_guardian
+from app.views.error_view import render_generic_not_found_page
 from app.views.layout import render_page
 
 app = FastAPI(title="Alumni Tracking System")
+# The middleware added last runs outermost. From the inside out: 404 guardian, 5xx guardian
+# (it also catches a failure inside the 404 guardian), logger (it logs the final answer).
+app.middleware("http")(not_found_guardian)
+app.middleware("http")(server_error_guardian)
+app.middleware("http")(log_requests)
+
+if os.environ.get("DEBUG_ROUTES") == "1":
+    # Test-only route to see the 5xx guardian at work; it exists only when DEBUG_ROUTES=1 in .env.
+    @app.get("/api/debug/error", include_in_schema=False)
+    def debug_error():
+        raise RuntimeError("Test error raised on purpose by /api/debug/error")
 
 APP_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
@@ -61,6 +77,13 @@ def read_root():
 @app.get("/about", response_class=HTMLResponse)
 def read_about():
     return render_page("About", ABOUT_BODY, "/about", narrow=True)
+
+
+@app.get("/404", response_class=HTMLResponse, include_in_schema=False)
+def generic_not_found(path: str = ""):
+    """The generic 404 page; invalid browser requests are redirected here (see not_found_guardian).
+    It still answers 404, so nobody mistakes it for a real page."""
+    return HTMLResponse(render_generic_not_found_page(path[:300]), status_code=404)
 
 
 @app.get("/hello")

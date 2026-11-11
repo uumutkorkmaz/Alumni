@@ -47,7 +47,7 @@ class AnnouncementFactory:
 
 
 EMPLOYMENT_TYPES = ["full_time", "part_time", "internship", "contract"]
-LOCATIONS = ["Istanbul", "Ankara", "Izmir", "Bursa", "Antalya", "Remote"]
+CITIES = ["Istanbul", "Ankara", "Izmir", "Bursa", "Antalya", "Remote"]
 JOB_TITLES = [
     "Junior Data Analyst",
     "Business Intelligence Specialist",
@@ -73,13 +73,15 @@ class JobPostingFactory:
 
     def make(self) -> dict:
         has_owner = bool(self.user_ids) and self.fake.boolean(chance_of_getting_true=75)
+        # ddd.md 4.3.1: at least one of description and application_url, never neither.
+        kind = self.fake.random_element(["both", "both", "description_only", "url_only"])
         return {
             "title": self.fake.random_element(JOB_TITLES),
             "company": self.fake.company(),
-            "location": self.fake.random_element(LOCATIONS),
+            "city": self.fake.random_element(CITIES),
             "employment_type": self.fake.random_element(EMPLOYMENT_TYPES),
-            "description": self.fake.paragraph(nb_sentences=5),
-            "application_url": self.fake.url() if self.fake.boolean(chance_of_getting_true=60) else None,
+            "description": None if kind == "url_only" else self.fake.paragraph(nb_sentences=5),
+            "application_url": None if kind == "description_only" else self.fake.url(),
             "deadline": self.fake.date_between(start_date="+10d", end_date="+90d")
             if self.fake.boolean(chance_of_getting_true=70)
             else None,

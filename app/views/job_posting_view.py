@@ -6,6 +6,7 @@ from app.views.layout import alert, filter_toolbar, new_button, page_header, plu
 ACTIVE = "/job-postings"
 DASH = '<span class="muted">-</span>'
 NONE = '<span class="muted">none</span>'
+NO_DESCRIPTION = '<span class="muted">No description. Use the application link below.</span>'
 
 EMPLOYMENT_TYPES = {
     "full_time": "Full time",
@@ -54,7 +55,7 @@ def _row(posting: dict, users_by_id: dict[int, dict]) -> str:
         f"<tr><td>{posting['id']}</td>"
         f'<td><a href="{base}">{escape(posting["title"])}</a></td>'
         f"<td>{escape(posting['company'])}</td>"
-        f"<td>{escape(posting['location'])}</td>"
+        f"<td>{escape(posting['city'])}</td>"
         f"<td>{_type_label(posting)}</td>"
         f"<td class=\"nowrap\">{posting['deadline'] or DASH}</td>"
         f"<td>{_status_badge(posting)}</td>"
@@ -63,26 +64,31 @@ def _row(posting: dict, users_by_id: dict[int, dict]) -> str:
     )
 
 
-def render_job_posting_list(postings: list[dict], users: list[dict]) -> str:
+def render_job_posting_list(
+    postings: list[dict], users: list[dict], error: str | None = None, values: dict | None = None
+) -> str:
+    """`error` and `values` are set when a submitted form was refused: the message and what was typed."""
     users_by_id = {u["id"]: u for u in users}
     rows = "".join(_row(p, users_by_id) for p in postings) or (
         '<tr><td class="empty" colspan="9">No job postings yet. Add the first one below.</td></tr>'
     )
     open_count = sum(1 for p in postings if is_open(p))
 
+    error_box = alert(f"The job posting was not saved. {error}") if error else ""
     body = f"""
+    {error_box}
     {page_header("Job Postings", "Jobs and internships shared with graduates.", new_button("New job posting"))}
     {filter_toolbar("postings-table", f"{plural(len(postings), 'posting')} &middot; {open_count} open")}
     <div class="table-wrap">
       <table id="postings-table">
-        <thead><tr><th>ID</th><th>Title</th><th>Company</th><th>Location</th><th>Type</th><th>Deadline</th><th>Status</th><th>Posted by</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Title</th><th>Company</th><th>City</th><th>Type</th><th>Deadline</th><th>Status</th><th>Posted by</th><th></th></tr></thead>
         <tbody>{rows}</tbody>
       </table>
     </div>
 
     <section class="card" id="new" style="margin-top: 32px">
       <h2>Add job posting</h2>
-      {_posting_form("/job-postings", users)}
+      {_posting_form("/job-postings", users, values)}
     </section>
     """
     return render_page("Job Postings", body, ACTIVE)
@@ -117,12 +123,12 @@ def render_job_posting_detail(
     {alert(error)}
     <h1>{escape(posting['title'])}</h1>
     <p class="meta">
-      <span>{escape(posting['company'])}</span><span>{escape(posting['location'])}</span>
+      <span>{escape(posting['company'])}</span><span>{escape(posting['city'])}</span>
       <span>{_type_label(posting)}</span>{_status_badge(posting)}
     </p>
 
     <section class="card" style="margin-top: 24px">
-      <p class="content">{escape(posting['description'])}</p>
+      <p class="content">{escape(posting['description']) if posting['description'] else NO_DESCRIPTION}</p>
       <dl class="dl" style="margin-top: 20px">
         <dt>Posted by</dt><dd>{_user_link(posting['posted_by_user_id'], users_by_id)}</dd>
         <dt>Deadline</dt><dd>{posting['deadline'] or NONE}</dd>
@@ -152,19 +158,21 @@ def render_job_posting_detail(
     return render_page(posting["title"], body, ACTIVE)
 
 
-def render_job_posting_edit_form(posting: dict, users: list[dict]) -> str:
+def render_job_posting_edit_form(posting: dict, users: list[dict], error: str | None = None) -> str:
+    error_box = alert(f"The changes were not saved. {error}") if error else ""
     body = f"""
+    {error_box}
     {page_header("Edit job posting", f"Job posting #{posting['id']}")}
     <section class="card">
-      {_posting_form(f"/job-postings/{posting['id']}/edit", users, posting)}
+      {_posting_form(f"/job-postings/{posting['id']}/edit", users, posting, editing=True)}
     </section>
     <a class="back-link" href="/job-postings">&larr; Back to job postings</a>
     """
     return render_page("Edit job posting", body, ACTIVE, narrow=True)
 
 
-def _posting_form(action: str, users: list[dict], posting: dict | None = None) -> str:
-    p = posting or {}
+def _posting_form(action: str, users: list[dict], values: dict | None = None, editing: bool = False) -> str:
+    p = values or {}
 
     def value(key: str) -> str:
         return escape(str(p.get(key) or ""))
@@ -174,28 +182,29 @@ def _posting_form(action: str, users: list[dict], posting: dict | None = None) -
         for key, label in EMPLOYMENT_TYPES.items()
     )
     owner_options = '<option value="">Department (no user)</option>' + "".join(
-        f'<option value="{u["id"]}"{" selected" if p.get("posted_by_user_id") == u["id"] else ""}>'
+        f'<option value="{u["id"]}"{" selected" if str(p.get("posted_by_user_id")) == str(u["id"]) else ""}>'
         f'{escape(u["name"])} (#{u["id"]})</option>'
         for u in users
     )
     checked = " checked" if p.get("is_active", True) else ""
-    submit_label = "Save changes" if posting else "Create job posting"
+    submit_label = "Save changes" if editing else "Create job posting"
 
     return f"""
     <form class="form-grid" method="post" action="{action}">
-      <div class="field full"><label for="title">Title</label>
-        <input id="title" type="text" name="title" value="{value('title')}" maxlength="200" required /></div>
+      <div class="field full"><label for="title">Title (max 120 characters)</label>
+        <input id="title" type="text" name="title" value="{value('title')}" maxlength="120" required /></div>
       <div class="field"><label for="company">Company</label>
         <input id="company" type="text" name="company" value="{value('company')}" maxlength="150" required /></div>
-      <div class="field"><label for="location">Location</label>
-        <input id="location" type="text" name="location" value="{value('location')}" maxlength="150" required /></div>
+      <div class="field"><label for="city">City</label>
+        <input id="city" type="text" name="city" value="{value('city')}" maxlength="150" required /></div>
       <div class="field"><label for="employment_type">Employment type</label>
         <select id="employment_type" name="employment_type" required>{type_options}</select></div>
       <div class="field"><label for="posted_by_user_id">Posted by</label>
         <select id="posted_by_user_id" name="posted_by_user_id">{owner_options}</select></div>
-      <div class="field full"><label for="description">Description</label>
-        <textarea id="description" name="description" required>{value('description')}</textarea></div>
-      <div class="field"><label for="application_url">Application URL (optional)</label>
+      <p class="muted small-note">Fill in <b>at least one</b> of Description and Application URL. You may fill in both.</p>
+      <div class="field full"><label for="description">Description (optional if an application URL is given)</label>
+        <textarea id="description" name="description">{value('description')}</textarea></div>
+      <div class="field"><label for="application_url">Application URL (optional if a description is given)</label>
         <input id="application_url" type="url" name="application_url" value="{value('application_url')}" maxlength="500" placeholder="https://" /></div>
       <div class="field"><label for="deadline">Deadline (optional)</label>
         <input id="deadline" type="date" name="deadline" value="{value('deadline')}" /></div>

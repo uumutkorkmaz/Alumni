@@ -150,6 +150,8 @@ p { margin: 0 0 12px; }
 .btn-sm { padding: 5px 11px; font-size: 13px; border-radius: 8px; }
 .inline-form { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
 .nowrap { white-space: nowrap; }
+.small-note { margin: 0; font-size: 13px; }
+.form-grid .small-note { grid-column: 1 / -1; }
 .sub { display: block; color: var(--muted); font-size: 13px; }
 
 /* ---------- Tables ---------- */

@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .venv/
 .env
+# Log files stay on each machine; only the empty folder is committed.
+logs/*
+!logs/.gitkeep

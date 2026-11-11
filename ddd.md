@@ -4,7 +4,7 @@
 
 This document describes the database design of the Alumni Tracking System. The tables below are created by the migrations in [section 7](#7-migrations), and the app reads and writes them through the models in `app/models/` (see [section 8](#8-from-in-memory-models-to-tables)).
 
-> **Status:** all four tables (`users`, `announcements`, `job_postings`, `applications`) exist in the database: migrations `0001`, `0002` and `0003` have been applied (`alembic current` shows `0003 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first.
+> **Status:** all four tables (`users`, `announcements`, `job_postings`, `applications`) exist in the database: migrations `0001` to `0004` have been applied (`alembic current` shows `0004 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first. The validation rules for job postings are in [section 4.3.1](#431-validation-rules-for-a-job-posting).
 
 ## 1. Why a Database
 
@@ -26,6 +26,8 @@ Restarting the container wiped the Python process's memory, so all data was lost
 | Access from Python | SQLAlchemy + psycopg2 | Both are already listed in `requirements.txt`. |
 | Startup order | `db` healthcheck (`pg_isready`) + `depends_on: condition: service_healthy` | The `api` container starts only after PostgreSQL accepts connections, so the app never tries to connect to a database that is still booting. |
 | Table creation | Alembic migrations (`migrations/`) | Tables are created by running `alembic upgrade head` inside the `api` container. See section 7. |
+| Host port | `POSTGRES_PORT` in `.env` (default `5432`) | Only for tools on the host (DBeaver, psql on the host). The app always connects inside Docker to `db:5432`, so changing this port does not touch the app. If another project already uses 5432 on the same computer, the `db` container cannot join its network; set another port (e.g. `5433`). |
+| Database unreachable | `503 Service Unavailable` | When the app cannot reach PostgreSQL (container stopped, not on the network), the 5xx guardian answers 503 with an error id instead of a raw error, and writes the cause to `logs/error.logs` (README, "5xx Guardian" and "Error Log"). |
 
 ## 3. Entities
 
@@ -66,12 +68,12 @@ The system has four entities:
 | Column | Type | Constraints | Description |
 | --- | --- | --- | --- |
 | `id` | `SERIAL` | `PRIMARY KEY` | Auto-incremented identifier. |
-| `title` | `VARCHAR(200)` | `NOT NULL` | Position title (e.g. "Junior Data Analyst"). |
+| `title` | `VARCHAR(120)` | `NOT NULL` | Position title (e.g. "Junior Data Analyst"). At most 120 characters (section 4.3.1). |
 | `company` | `VARCHAR(150)` | `NOT NULL` | Hiring company. |
-| `location` | `VARCHAR(150)` | `NOT NULL` | City, or "Remote". |
+| `city` | `VARCHAR(150)` | `NOT NULL` | City of the job, or "Remote". Called `location` before migration `0004`. |
 | `employment_type` | `VARCHAR(20)` | `NOT NULL`, `CHECK (employment_type IN ('full_time', 'part_time', 'internship', 'contract'))` | Kind of position. A fixed list so filtering by type is reliable. |
-| `description` | `TEXT` | `NOT NULL` | Responsibilities and requirements, no length limit. |
-| `application_url` | `VARCHAR(500)` | nullable | Where to apply. Optional: some postings only give a contact in the description. |
+| `description` | `TEXT` | nullable, see the check below | Responsibilities and requirements, no length limit. Optional if `application_url` is given. |
+| `application_url` | `VARCHAR(500)` | nullable, see the check below | Where to apply. Optional if `description` is given. |
 | `deadline` | `DATE` | nullable | Last day to apply. Optional: some postings stay open until filled. |
 | `is_active` | `BOOLEAN` | `NOT NULL`, `DEFAULT TRUE` | `FALSE` hides a filled or expired posting without deleting it. |
 | `posted_by_user_id` | `INTEGER` | nullable, `REFERENCES users(id) ON DELETE SET NULL` | The user who shared the posting. `NULL` when the department posts it, or when the user is later deleted. |
@@ -81,6 +83,57 @@ The system has four entities:
 | Index | Columns | Reason |
 | --- | --- | --- |
 | `ix_job_postings_posted_by_user_id` | `posted_by_user_id` | PostgreSQL does not index foreign keys automatically. This keeps "postings by this user" lookups and user deletes fast. |
+
+| Check constraint | Rule | Reason |
+| --- | --- | --- |
+| `ck_job_postings_employment_type` | `employment_type IN ('full_time', 'part_time', 'internship', 'contract')` | Only the allowed kinds of position. |
+| `ck_job_postings_description_or_url` | `description IS NOT NULL OR application_url IS NOT NULL` | At least one of the two (section 4.3.1). |
+
+#### 4.3.1 Validation rules for a job posting
+
+> **Status:** applied. These rules were given in class and decided here first (design first); migration `0004` then changed the table, and the models, the API, the pages and the seed follow them. The table in section 4.3 shows the result.
+
+| Field | Rule | Before `0004` | Change made by `0004` |
+| --- | --- | --- | --- |
+| `title` | **Required**, at most **120 characters** | `VARCHAR(200) NOT NULL` | Shorten to `VARCHAR(120)` |
+| `company` | **Required** | `VARCHAR(150) NOT NULL` | None |
+| `city` | **Required** | Stored as `location` (`VARCHAR(150) NOT NULL`) | Rename `location` → `city` |
+| `description` | **Optional**, but see the rule below | `TEXT NOT NULL` (required) | Allow `NULL` |
+| `application_url` | **Optional**, but see the rule below | `VARCHAR(500)`, nullable | None |
+
+**Rule: at least one of `description` and `application_url` is required.**
+
+The requirement was given in class as two possible readings:
+
+1. `description` optional, `application_url` required; or
+2. `application_url` optional, `description` required.
+
+**Decision:** neither reading alone. A posting must have **at least one** of the two; it may have both. Whoever writes a description does not have to add a URL, and whoever adds a URL does not have to write a description. Only leaving both empty is refused:
+
+| `description` | `application_url` | Result |
+| --- | --- | --- |
+| filled | empty | Accepted |
+| empty | filled | Accepted |
+| filled | filled | Accepted |
+| empty | empty | **Refused** |
+
+**Reason:** a posting is useless only when it says neither *what the job is* nor *where to apply*. Some postings are just a link to the company's own page, others are a full text with a contact inside it. Forcing one specific field would reject one of these valid kinds of posting, while "at least one" accepts both and still rejects an empty posting.
+
+How the rule is enforced:
+
+- **Model (one rule, one place):** the job posting model (`app/models/job_posting.py`) checks the rule before saving, so the JSON API (direct and nested routes) and the HTML pages all go through it. A text that is empty or contains only spaces counts as missing, and spaces around values are trimmed. A refused posting answers **422** with the message *"A job posting needs a description or an application URL (at least one of the two)."* The pages show the same message above the form and keep what was typed.
+- **Database:** a `CHECK` constraint keeps the rule even if a row is written outside the app:
+  `CHECK (description IS NOT NULL OR application_url IS NOT NULL)` (named `ck_job_postings_description_or_url`).
+- **Update (PATCH):** the rule is checked on the posting as it will be *after* the change, so clearing the only one of the two fields that is filled is refused. Required fields (`title`, `company`, `city`, ...) cannot be set to `null` by a PATCH either (422).
+- **Seed:** the factory always fills at least one of the two (description only, URL only, or both), and the database check would refuse anything else.
+
+What migration `0004` did (a new file, `0004_job_posting_validation_rules.py`; `0002` was not edited):
+
+- `title` became `VARCHAR(120)`. Titles longer than 120 characters would have to be shortened first, or the migration fails; before applying, the database had none.
+- `location` was renamed to `city` (the data stayed).
+- `description` became nullable.
+- The `ck_job_postings_description_or_url` check was added. Every existing row passed it, because every row had a description.
+- `downgrade()` reverses all of it. Because `description` becomes required again, a posting that only has a URL first gets its URL copied into `description`. Tested: upgrade, downgrade and upgrade again on a temporary database.
 
 ### 4.4 `applications`
 
@@ -124,7 +177,7 @@ erDiagram
         int id PK
         varchar title
         varchar company
-        varchar location
+        varchar city
         varchar employment_type
         text description
         varchar application_url
@@ -189,18 +242,20 @@ CREATE TABLE announcements (
 
 CREATE TABLE job_postings (
     id                SERIAL PRIMARY KEY,
-    title             VARCHAR(200) NOT NULL,
+    title             VARCHAR(120) NOT NULL,
     company           VARCHAR(150) NOT NULL,
-    location          VARCHAR(150) NOT NULL,
+    city              VARCHAR(150) NOT NULL,
     employment_type   VARCHAR(20)  NOT NULL
                       CHECK (employment_type IN ('full_time', 'part_time', 'internship', 'contract')),
-    description       TEXT         NOT NULL,
+    description       TEXT,
     application_url   VARCHAR(500),
     deadline          DATE,
     is_active         BOOLEAN      NOT NULL DEFAULT TRUE,
     posted_by_user_id INTEGER      REFERENCES users(id) ON DELETE SET NULL,
     created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_job_postings_description_or_url
+        CHECK (description IS NOT NULL OR application_url IS NOT NULL)
 );
 
 CREATE INDEX ix_job_postings_posted_by_user_id ON job_postings (posted_by_user_id);
@@ -231,8 +286,9 @@ Migrations are managed with [Alembic](https://alembic.sqlalchemy.org/). Each mig
 | `0001` | `migrations/versions/0001_create_users_and_announcements.py` | Creates `users` and `announcements` exactly as defined in section 4. Downgrade drops both tables. | Applied |
 | `0002` | `migrations/versions/0002_create_job_postings.py` | Creates `job_postings` (section 4.3) with its foreign key to `users` and its index. Downgrade drops the table. Depends on `0001`, because the foreign key needs `users` to exist. | Applied |
 | `0003` | `migrations/versions/0003_create_applications.py` | Creates `applications` (section 4.4) with its two foreign keys, the unique pair and the index. Downgrade drops the table. Depends on `0002`, because it references both `users` and `job_postings`. | Applied |
+| `0004` | `migrations/versions/0004_job_posting_validation_rules.py` | Applies the job posting validation rules of section 4.3.1: `title` to `VARCHAR(120)`, `location` renamed to `city`, `description` nullable, `CHECK (description IS NOT NULL OR application_url IS NOT NULL)`. Downgrade reverses it. Depends on `0003`. | Applied |
 
-`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied, the existing rows were untouched and `alembic current` now shows `0003 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
+`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied and the existing rows were untouched. Later `0004` (job posting validation rules) was applied the same way, and `alembic current` now shows `0004 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
 
 | Command (run in the project folder) | Meaning |
 | --- | --- |
@@ -266,7 +322,7 @@ Without `--fresh`, each run adds more rows on top of the existing ones. The seed
 
 **Seeded job postings** (what `JobPostingFactory` produces, matching section 4.3):
 - `posted_by_user_id` is picked from the users that exist in the table when the seeder runs, so the foreign key is always valid. About 75% of the postings belong to a user and about 25% are department postings (`NULL`). If there are no users at all, every posting is a department posting.
-- `employment_type` is one of `full_time`, `part_time`, `internship`, `contract`. About 85% of the postings are active; about 70% have a `deadline` 10 to 90 days ahead, the rest have none (`NULL`); about 60% have an `application_url`.
+- `employment_type` is one of `full_time`, `part_time`, `internship`, `contract`. About 85% of the postings are active; about 70% have a `deadline` 10 to 90 days ahead, the rest have none (`NULL`); every posting has a `description`, an `application_url` or both (about half have both, a quarter only a description, a quarter only a URL; never neither, section 4.3.1).
 - `applications` is not seeded. It is emptied by `--fresh`, because `TRUNCATE` on `users` and `job_postings` must include every table that points to them (PostgreSQL refuses otherwise), and applications cannot outlive the users and postings they belong to.
 
 ## 8. From In-Memory Models to Tables
@@ -285,6 +341,8 @@ The app is now connected to the database. `app/models/user.py` and `app/models/a
 | Missing id in a list | `404 Not Found` | Unchanged: a missing id still answers `404`. |
 
 The API contracts (request/response fields in `/api/users` and `/api/announcements`) stay the same, so controllers and views did not need to change. `created_at` and `updated_at` of users are stored but not returned by the API.
+
+**How the error answers look now:** the models still raise `404 User not found`, `404 Job posting not found`, `409 ...` and so on, as described in this document. Two middlewares (README, "Middleware") then shape the answer that leaves the app: every 404 carries a `reason` with the id that was not found, e.g. `{"status": 404, "error": "Not Found", "reason": "User not found (user_id=999).", ...}`, and a database failure becomes `503` with an `error_id`. In the sections below, "`404 User not found`" means this answer.
 
 ### 8.1 ORM Models and Relationships
 

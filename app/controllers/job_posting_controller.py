@@ -15,34 +15,61 @@ from app.views.job_posting_view import (
 )
 
 
-def _build_posting(
-    title: str,
-    company: str,
-    location: str,
-    employment_type: str,
-    description: str,
-    application_url: str,
-    deadline: str,
-    is_active: str | None,
-    posted_by_user_id: str,
-) -> JobPostingCreate:
-    """Turn the raw HTML form values into a validated posting (empty optional fields become None)."""
+class PostingFormError(Exception):
+    """The submitted form broke a rule; `values` is what the user typed, to show the form again."""
+
+    def __init__(self, message: str, values: dict) -> None:
+        super().__init__(message)
+        self.message = message
+        self.values = values
+
+
+def _error_text(error: ValidationError) -> str:
+    parts = []
+    for item in error.errors(include_url=False):
+        message = item["msg"].removeprefix("Value error, ")
+        field = ".".join(str(part) for part in item["loc"])
+        parts.append(f"{field}: {message}" if field else message)
+    return " · ".join(parts)
+
+
+def _build_posting(values: dict) -> JobPostingCreate:
+    """Turn the raw HTML form values into a validated posting (rules: ddd.md section 4.3.1)."""
     try:
+        deadline = values["deadline"].strip()
+        owner = values["posted_by_user_id"].strip()
         return JobPostingCreate(
-            title=title,
-            company=company,
-            location=location,
-            employment_type=employment_type,
-            description=description,
-            application_url=application_url.strip() or None,
-            deadline=date.fromisoformat(deadline) if deadline.strip() else None,
-            is_active=is_active is not None,
-            posted_by_user_id=int(posted_by_user_id) if posted_by_user_id.strip() else None,
+            title=values["title"],
+            company=values["company"],
+            city=values["city"],
+            employment_type=values["employment_type"],
+            description=values["description"],
+            application_url=values["application_url"],
+            deadline=date.fromisoformat(deadline) if deadline else None,
+            is_active=values["is_active"],
+            posted_by_user_id=int(owner) if owner else None,
         )
     except ValidationError as error:
-        raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
+        raise PostingFormError(_error_text(error), values)
     except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error))
+        raise PostingFormError(str(error), values)
+
+
+def _form_values(
+    title: str, company: str, city: str, employment_type: str, description: str,
+    application_url: str, deadline: str, is_active: str | None, posted_by_user_id: str,
+) -> dict:
+    return {
+        "title": title,
+        "company": company,
+        "city": city,
+        "employment_type": employment_type,
+        "description": description,
+        "application_url": application_url,
+        "deadline": deadline,
+        "is_active": is_active is not None,
+        "posted_by_user_id": posted_by_user_id,
+    }
 
 
 class JobPostingController:
@@ -64,21 +91,28 @@ class JobPostingController:
 
     def create(
         self,
-        title: str = Form(...),
-        company: str = Form(...),
-        location: str = Form(...),
-        employment_type: str = Form(...),
-        description: str = Form(...),
+        title: str = Form(""),
+        company: str = Form(""),
+        city: str = Form(""),
+        employment_type: str = Form(""),
+        description: str = Form(""),
         application_url: str = Form(""),
         deadline: str = Form(""),
         is_active: str | None = Form(None),
         posted_by_user_id: str = Form(""),
-    ) -> RedirectResponse:
-        data = _build_posting(
-            title, company, location, employment_type, description,
+    ) -> HTMLResponse:
+        values = _form_values(
+            title, company, city, employment_type, description,
             application_url, deadline, is_active, posted_by_user_id,
         )
-        job_posting_model.create_job_posting(data)
+        try:
+            job_posting_model.create_job_posting(_build_posting(values))
+        except PostingFormError as error:
+            # Show the same page again, with the message and what the user typed.
+            page = render_job_posting_list(
+                job_posting_model.get_job_postings(), user_model.get_users(), error.message, error.values
+            )
+            return HTMLResponse(page, status_code=422)
         return RedirectResponse(url="/job-postings", status_code=303)
 
     def get(self, posting_id: int) -> HTMLResponse:
@@ -92,21 +126,28 @@ class JobPostingController:
     def update(
         self,
         posting_id: int,
-        title: str = Form(...),
-        company: str = Form(...),
-        location: str = Form(...),
-        employment_type: str = Form(...),
-        description: str = Form(...),
+        title: str = Form(""),
+        company: str = Form(""),
+        city: str = Form(""),
+        employment_type: str = Form(""),
+        description: str = Form(""),
         application_url: str = Form(""),
         deadline: str = Form(""),
         is_active: str | None = Form(None),
         posted_by_user_id: str = Form(""),
-    ) -> RedirectResponse:
-        data = _build_posting(
-            title, company, location, employment_type, description,
+    ) -> HTMLResponse:
+        values = _form_values(
+            title, company, city, employment_type, description,
             application_url, deadline, is_active, posted_by_user_id,
         )
-        job_posting_model.update_job_posting(posting_id, data)
+        try:
+            job_posting_model.update_job_posting(posting_id, _build_posting(values))
+        except PostingFormError as error:
+            job_posting_model.get_job_posting(posting_id)  # 404 if the posting does not exist
+            page = render_job_posting_edit_form(
+                {**error.values, "id": posting_id}, user_model.get_users(), error.message
+            )
+            return HTMLResponse(page, status_code=422)
         return RedirectResponse(url=f"/job-postings/{posting_id}", status_code=303)
 
     def delete(self, posting_id: int) -> RedirectResponse:

@@ -9,11 +9,14 @@ services:
       - ./app:/code/app
       - ./migrations:/code/migrations
       - ./alembic.ini:/code/alembic.ini
+      - ./logs:/code/logs
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      TZ: ${TZ:-Europe/Istanbul}
+      DEBUG_ROUTES: ${DEBUG_ROUTES:-0}
 
   db:
     image: postgres:16

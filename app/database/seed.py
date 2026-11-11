@@ -14,9 +14,9 @@ INSERT_ANNOUNCEMENT = text(
     "INSERT INTO announcements (title, content, author) VALUES (:title, :content, :author)"
 )
 INSERT_JOB_POSTING = text(
-    "INSERT INTO job_postings (title, company, location, employment_type, description, "
+    "INSERT INTO job_postings (title, company, city, employment_type, description, "
     "application_url, deadline, is_active, posted_by_user_id) "
-    "VALUES (:title, :company, :location, :employment_type, :description, "
+    "VALUES (:title, :company, :city, :employment_type, :description, "
     ":application_url, :deadline, :is_active, :posted_by_user_id)"
 )
 

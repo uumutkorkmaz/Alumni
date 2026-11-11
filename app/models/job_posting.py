@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import TIMESTAMP, CheckConstraint, ForeignKey, String, Text, func, select, text
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
@@ -15,6 +15,17 @@ if TYPE_CHECKING:
 
 EmploymentType = Literal["full_time", "part_time", "internship", "contract"]
 
+# ddd.md 4.3.1: a posting must say what the job is or where to apply (at least one, both allowed).
+DESCRIPTION_OR_URL_MESSAGE = "A job posting needs a description or an application URL (at least one of the two)."
+REQUIRED_FIELDS = ("title", "company", "city", "employment_type", "is_active")
+
+
+def _blank_to_none(value: object) -> object:
+    """An empty or spaces-only text counts as missing."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
 
 class JobPosting(Base):
     """ORM model for the job_postings table (ddd.md section 4.3)."""
@@ -25,14 +36,18 @@ class JobPosting(Base):
             "employment_type IN ('full_time', 'part_time', 'internship', 'contract')",
             name="ck_job_postings_employment_type",
         ),
+        CheckConstraint(
+            "description IS NOT NULL OR application_url IS NOT NULL",
+            name="ck_job_postings_description_or_url",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(120))
     company: Mapped[str] = mapped_column(String(150))
-    location: Mapped[str] = mapped_column(String(150))
+    city: Mapped[str] = mapped_column(String(150))
     employment_type: Mapped[str] = mapped_column(String(20))
-    description: Mapped[str] = mapped_column(Text())
+    description: Mapped[str | None] = mapped_column(Text())
     application_url: Mapped[str | None] = mapped_column(String(500))
     deadline: Mapped[date | None]
     is_active: Mapped[bool] = mapped_column(server_default=text("TRUE"))
@@ -56,16 +71,32 @@ class JobPosting(Base):
 
 
 class JobPostingBase(BaseModel):
-    """Fields of a posting that do not say who owns it (used as-is by the nested routes)."""
+    """Fields of a posting that do not say who owns it (used as-is by the nested routes).
 
-    title: str = Field(max_length=200)
-    company: str = Field(max_length=150)
-    location: str = Field(max_length=150)
+    Validation rules: ddd.md section 4.3.1.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=120)
+    company: str = Field(min_length=1, max_length=150)
+    city: str = Field(min_length=1, max_length=150)
     employment_type: EmploymentType
-    description: str
+    description: str | None = None
     application_url: str | None = Field(default=None, max_length=500)
     deadline: date | None = None
     is_active: bool = True
+
+    @field_validator("description", "application_url", mode="before")
+    @classmethod
+    def blank_optional_to_none(cls, value: object) -> object:
+        return _blank_to_none(value)
+
+    @model_validator(mode="after")
+    def check_description_or_url(self) -> "JobPostingBase":
+        if self.description is None and self.application_url is None:
+            raise ValueError(DESCRIPTION_OR_URL_MESSAGE)
+        return self
 
 
 class JobPostingCreate(JobPostingBase):
@@ -75,9 +106,14 @@ class JobPostingCreate(JobPostingBase):
 
 
 class JobPostingUpdate(BaseModel):
-    title: str | None = Field(default=None, max_length=200)
-    company: str | None = Field(default=None, max_length=150)
-    location: str | None = Field(default=None, max_length=150)
+    """PATCH: every field is optional. The description-or-URL rule is checked in _update,
+    on the posting as it will be after the change."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    company: str | None = Field(default=None, min_length=1, max_length=150)
+    city: str | None = Field(default=None, min_length=1, max_length=150)
     employment_type: EmploymentType | None = None
     description: str | None = None
     application_url: str | None = Field(default=None, max_length=500)
@@ -85,13 +121,18 @@ class JobPostingUpdate(BaseModel):
     is_active: bool | None = None
     posted_by_user_id: int | None = None
 
+    @field_validator("description", "application_url", mode="before")
+    @classmethod
+    def blank_optional_to_none(cls, value: object) -> object:
+        return _blank_to_none(value)
+
 
 def _to_dict(posting: JobPosting) -> dict:
     return {
         "id": posting.id,
         "title": posting.title,
         "company": posting.company,
-        "location": posting.location,
+        "city": posting.city,
         "employment_type": posting.employment_type,
         "description": posting.description,
         "application_url": posting.application_url,
@@ -155,8 +196,14 @@ def _update(posting_id: int, fields: dict) -> dict:
         posting = _find(session, posting_id)
         if fields.get("posted_by_user_id") is not None:
             _require_user(session, fields["posted_by_user_id"])
+        missing = [key for key in REQUIRED_FIELDS if key in fields and fields[key] is None]
+        if missing:
+            raise HTTPException(status_code=422, detail=f"These fields cannot be empty: {', '.join(missing)}")
         for key, value in fields.items():
             setattr(posting, key, value)
+        # The rule is checked on the result: clearing the only filled one of the two is refused.
+        if posting.description is None and posting.application_url is None:
+            raise HTTPException(status_code=422, detail=DESCRIPTION_OR_URL_MESSAGE)
         posting.updated_at = func.current_timestamp()
         session.commit()
         session.refresh(posting)

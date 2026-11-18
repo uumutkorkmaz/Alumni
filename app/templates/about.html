@@ -1,47 +1,56 @@
-<span class="pill purple">Proje</span>
-<h1>Proje Hakkında</h1>
-<p class="muted" style="font-size: 17px; line-height: 1.7; max-width: 620px; margin: 16px 0 36px">
-  Alumni Tracking System, Yönetim Bilişim Sistemleri (MIS) mezunlarının
-  kariyer bilgilerini takip etmek amacıyla Web Programming (YBSB3001)
-  dersi kapsamında geliştirilen bir backend sistemidir.
-</p>
+<section class="about-hero">
+  <span class="kicker">Proje &middot; YBSB3001</span>
+  <h1>Proje Hakkında</h1>
+  <span class="faculty-line" aria-hidden="true"></span>
+  <p class="lead">
+    Alumni Tracking System, İstanbul Üniversitesi İktisat Fakültesi Yönetim Bilişim Sistemleri (YBS)
+    mezunlarının kariyer bilgilerini takip etmek amacıyla Web Programming (YBSB3001) dersi kapsamında
+    geliştirilen bir web uygulamasıdır.
+  </p>
+</section>
 
 <div class="grid-2">
-  <div class="info-card">
+  <div class="info-card" data-reveal>
     <h3>Ders</h3>
     <p>YBSB3001 &mdash; Web Programming</p>
   </div>
-  <div class="info-card">
+  <div class="info-card" data-reveal>
     <h3>Durum</h3>
     <p class="status">Geliştirme aşamasında</p>
   </div>
-  <div class="info-card">
+  <div class="info-card" data-reveal>
     <h3>Backend</h3>
-    <p>FastAPI (Python)</p>
+    <p>FastAPI (Python), MVC</p>
   </div>
-  <div class="info-card">
+  <div class="info-card" data-reveal>
     <h3>Veritabanı</h3>
-    <p>PostgreSQL</p>
+    <p>PostgreSQL &middot; SQLAlchemy &middot; Alembic</p>
   </div>
 </div>
 
-<div class="timeline">
-  <div class="timeline-item">
+<div class="section-head"><h2>Yol haritası</h2><span class="label-mono">Dört aşama</span></div>
+<ol class="timeline">
+  <li class="timeline-item" data-reveal>
+    <span class="label-mono">Aşama 01</span>
     <h4>Temel API iskeleti</h4>
     <p>FastAPI projesi kuruldu, Docker &amp; Docker Compose ile çalışır hale getirildi.</p>
-  </div>
-  <div class="timeline-item">
+  </li>
+  <li class="timeline-item" data-reveal>
+    <span class="label-mono">Aşama 02</span>
     <h4>Mezunlar ve duyurular</h4>
     <p>Kullanıcı ve duyuru modelleri, JSON API ve tarayıcıdan yönetim sayfaları eklendi.</p>
-  </div>
-  <div class="timeline-item">
+  </li>
+  <li class="timeline-item" data-reveal>
+    <span class="label-mono">Aşama 03</span>
     <h4>PostgreSQL entegrasyonu</h4>
     <p>Migration&apos;lar, factory &amp; seed ve ORM modelleri ile uygulama veritabanına bağlandı.</p>
-  </div>
-  <div class="timeline-item">
+  </li>
+  <li class="timeline-item" data-reveal>
+    <span class="label-mono">Aşama 04</span>
     <h4>İş ilanları ve başvurular</h4>
-    <p>Mezunlar iş ilanlarına başvurabiliyor; ilanlar ve başvurular hem API hem arayüz üzerinden yönetiliyor.</p>
-  </div>
-</div>
+    <p>Mezunlar iş ilanlarına başvurabiliyor; ilanlar ve başvurular hem API hem arayüz üzerinden yönetiliyor.
+      Middleware, hata günlüğü ve genel 404 sayfası eklendi.</p>
+  </li>
+</ol>
 
-<a class="back-link" href="/">&larr; Ana sayfaya dön</a>
+<a class="back-link" href="/"><span aria-hidden="true">&larr;</span> Ana sayfaya dön</a>

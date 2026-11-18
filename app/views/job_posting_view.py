@@ -1,7 +1,18 @@
 from datetime import date
 from html import escape
 
-from app.views.layout import alert, filter_toolbar, new_button, page_header, plural, render_page, row_actions
+from app.views.layout import (
+    alert,
+    back_link,
+    edit_header,
+    filter_toolbar,
+    form_card,
+    new_button,
+    page_header,
+    plural,
+    render_page,
+    row_actions,
+)
 
 ACTIVE = "/job-postings"
 DASH = '<span class="muted">-</span>'
@@ -52,12 +63,12 @@ def _external_link(url: str | None) -> str:
 def _row(posting: dict, users_by_id: dict[int, dict]) -> str:
     base = f"/job-postings/{posting['id']}"
     return (
-        f"<tr><td>{posting['id']}</td>"
-        f'<td><a href="{base}">{escape(posting["title"])}</a></td>'
-        f"<td>{escape(posting['company'])}</td>"
+        f'<tr><td class="id">#{posting["id"]}</td>'
+        f'<td><a href="{base}">{escape(posting["title"])}</a>'
+        f'<span class="sub">{escape(posting["company"])}</span></td>'
         f"<td>{escape(posting['city'])}</td>"
-        f"<td>{_type_label(posting)}</td>"
-        f"<td class=\"nowrap\">{posting['deadline'] or DASH}</td>"
+        f'<td class="nowrap">{_type_label(posting)}</td>'
+        f'<td class="date">{posting["deadline"] or DASH}</td>'
         f"<td>{_status_badge(posting)}</td>"
         f"<td>{_user_link(posting['posted_by_user_id'], users_by_id)}</td>"
         f'<td class="col-actions">{row_actions(base, "job posting")}</td></tr>'
@@ -70,26 +81,28 @@ def render_job_posting_list(
     """`error` and `values` are set when a submitted form was refused: the message and what was typed."""
     users_by_id = {u["id"]: u for u in users}
     rows = "".join(_row(p, users_by_id) for p in postings) or (
-        '<tr><td class="empty" colspan="9">No job postings yet. Add the first one below.</td></tr>'
+        '<tr><td class="empty" colspan="8">No job postings yet. Add the first one below.</td></tr>'
     )
     open_count = sum(1 for p in postings if is_open(p))
 
     error_box = alert(f"The job posting was not saved. {error}") if error else ""
     body = f"""
     {error_box}
-    {page_header("Job Postings", "Jobs and internships shared with graduates.", new_button("New job posting"))}
+    {page_header("Job Postings", "Jobs and internships shared with graduates.", new_button("New job posting"), kicker="Careers · Postings", line=True)}
+    <section class="summary" aria-label="Summary">
+      <div class="summary-item" data-reveal><div class="label-mono">Postings</div><div class="num" data-count="{len(postings)}">{len(postings)}</div></div>
+      <div class="summary-item is-open" data-reveal><div class="label-mono">Open</div><div class="num" data-count="{open_count}">{open_count}</div></div>
+      <div class="summary-item is-closed" data-reveal><div class="label-mono">Closed</div><div class="num" data-count="{len(postings) - open_count}">{len(postings) - open_count}</div></div>
+    </section>
     {filter_toolbar("postings-table", f"{plural(len(postings), 'posting')} &middot; {open_count} open")}
-    <div class="table-wrap">
+    <div class="table-wrap" data-reveal>
       <table id="postings-table">
-        <thead><tr><th>ID</th><th>Title</th><th>Company</th><th>City</th><th>Type</th><th>Deadline</th><th>Status</th><th>Posted by</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Title &middot; Company</th><th>City</th><th>Type</th><th>Deadline</th><th>Status</th><th>Posted by</th><th></th></tr></thead>
         <tbody>{rows}</tbody>
       </table>
     </div>
 
-    <section class="card" id="new" style="margin-top: 32px">
-      <h2>Add job posting</h2>
-      {_posting_form("/job-postings", users, values)}
-    </section>
+    {form_card("Add a job posting", _posting_form("/job-postings", users, values), "Description or link required")}
     """
     return render_page("Job Postings", body, ACTIVE)
 
@@ -102,7 +115,7 @@ def render_job_posting_detail(
         f"<tr><td>{_user_link(a['user_id'], users_by_id)}</td>"
         f'<td><span class="badge s-{a["status"]}">{a["status"].replace("_", " ")}</span></td>'
         f"<td>{escape(a['cover_letter'] or '') or DASH}</td>"
-        f"<td class=\"nowrap\">{a['created_at']}</td></tr>"
+        f'<td class="date">{a["created_at"]}</td></tr>'
         for a in applications
     ) or '<tr><td class="empty" colspan="4">Nobody has applied yet.</td></tr>'
 
@@ -113,47 +126,60 @@ def render_job_posting_detail(
         <div class="field full"><label for="user_id">Applicant</label>
           <select id="user_id" name="user_id" required>{options}</select></div>
         <div class="field full"><label for="cover_letter">Cover letter (optional)</label>
-          <textarea id="cover_letter" name="cover_letter"></textarea></div>
-        <div class="form-actions"><button type="submit" class="btn btn-primary">Apply</button></div>
+          <textarea id="cover_letter" name="cover_letter" rows="4"></textarea></div>
+        <div class="form-actions"><button type="submit" class="btn btn-primary">Send application</button></div>
       </form>"""
     else:
-        apply_form = '<p class="muted">This posting is closed, so nobody can apply to it.</p>'
+        apply_form = '<p class="muted" style="margin: 0">This posting is closed, so nobody can apply to it.</p>'
 
     body = f"""
     {alert(error)}
-    <h1>{escape(posting['title'])}</h1>
-    <p class="meta">
-      <span>{escape(posting['company'])}</span><span>{escape(posting['city'])}</span>
-      <span>{_type_label(posting)}</span>{_status_badge(posting)}
-    </p>
+    <header class="article-head">
+      <span class="kicker">Job posting #{posting['id']} &middot; {_type_label(posting)}</span>
+      <h1>{escape(posting['title'])}</h1>
+      <p class="meta">
+        <span>{escape(posting['company'])}</span><span>{escape(posting['city'])}</span>{_status_badge(posting)}
+      </p>
+      <span class="faculty-line" aria-hidden="true"></span>
+    </header>
 
-    <section class="card" style="margin-top: 24px">
-      <p class="content">{escape(posting['description']) if posting['description'] else NO_DESCRIPTION}</p>
-      <dl class="dl" style="margin-top: 20px">
-        <dt>Posted by</dt><dd>{_user_link(posting['posted_by_user_id'], users_by_id)}</dd>
-        <dt>Deadline</dt><dd>{posting['deadline'] or NONE}</dd>
-        <dt>Apply at</dt><dd>{_external_link(posting['application_url'])}</dd>
-        <dt>Created</dt><dd>{posting['created_at']}</dd>
-      </dl>
-      <div class="detail-actions">
-        <a class="btn btn-primary" href="/job-postings/{posting['id']}/edit">Edit</a>
-        <a class="btn btn-ghost" href="/applications">Manage all applications</a>
+    <div class="detail-grid">
+      <div class="detail-main">
+        <section class="card" data-reveal>
+          <h2>About the role</h2>
+          <p class="content">{escape(posting['description']) if posting['description'] else NO_DESCRIPTION}</p>
+        </section>
+
+        <div class="section-head"><h2>Applicants</h2><span class="label-mono">{plural(len(applications), "application")}</span></div>
+        <div class="table-wrap" data-reveal>
+          <table>
+            <thead><tr><th>Applicant</th><th>Status</th><th>Cover letter</th><th>Applied</th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>
       </div>
-    </section>
 
-    <h2 class="section-title">Applicants ({len(applications)})</h2>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Applicant</th><th>Status</th><th>Cover letter</th><th>Applied</th></tr></thead>
-        <tbody>{rows}</tbody>
-      </table>
+      <aside class="detail-side">
+        <section class="card card-featured" data-reveal>
+          <dl class="dl">
+            <dt>Company</dt><dd>{escape(posting['company'])} &middot; {escape(posting['city'])}</dd>
+            <dt>Posted by</dt><dd>{_user_link(posting['posted_by_user_id'], users_by_id)}</dd>
+            <dt>Deadline</dt><dd class="mono">{posting['deadline'] or NONE}</dd>
+            <dt>Apply at</dt><dd>{_external_link(posting['application_url'])}</dd>
+            <dt>Created</dt><dd class="mono">{posting['created_at']}</dd>
+          </dl>
+          <div class="detail-actions">
+            <a class="btn btn-primary btn-sm" href="/job-postings/{posting['id']}/edit">Edit</a>
+            <a class="btn btn-ghost btn-sm" href="/applications">All applications</a>
+          </div>
+        </section>
+        <section class="card" id="apply" data-reveal>
+          <h2>Apply</h2>
+          {apply_form}
+        </section>
+      </aside>
     </div>
-
-    <section class="card" style="margin-top: 32px">
-      <h2>Apply to this posting</h2>
-      {apply_form}
-    </section>
-    <a class="back-link" href="/job-postings">&larr; Back to job postings</a>
+    {back_link("/job-postings", "Back to job postings")}
     """
     return render_page(posting["title"], body, ACTIVE)
 
@@ -162,11 +188,11 @@ def render_job_posting_edit_form(posting: dict, users: list[dict], error: str | 
     error_box = alert(f"The changes were not saved. {error}") if error else ""
     body = f"""
     {error_box}
-    {page_header("Edit job posting", f"Job posting #{posting['id']}")}
-    <section class="card">
+    {edit_header("job posting", f"Job posting #{posting['id']}")}
+    <section class="card card-featured">
       {_posting_form(f"/job-postings/{posting['id']}/edit", users, posting, editing=True)}
     </section>
-    <a class="back-link" href="/job-postings">&larr; Back to job postings</a>
+    {back_link(f"/job-postings/{posting['id']}", "Back to the job posting")}
     """
     return render_page("Edit job posting", body, ACTIVE, narrow=True)
 
@@ -188,6 +214,7 @@ def _posting_form(action: str, users: list[dict], values: dict | None = None, ed
     )
     checked = " checked" if p.get("is_active", True) else ""
     submit_label = "Save changes" if editing else "Create job posting"
+    cancel = f'<a class="btn btn-ghost" href="/job-postings/{p["id"]}">Cancel</a>' if editing else ""
 
     return f"""
     <form class="form-grid" method="post" action="{action}">
@@ -209,6 +236,6 @@ def _posting_form(action: str, users: list[dict], values: dict | None = None, ed
       <div class="field"><label for="deadline">Deadline (optional)</label>
         <input id="deadline" type="date" name="deadline" value="{value('deadline')}" /></div>
       <div class="field full"><label class="check"><input type="checkbox" name="is_active"{checked} /> Active (accepting applications)</label></div>
-      <div class="form-actions"><button type="submit" class="btn btn-primary">{submit_label}</button></div>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">{submit_label}</button>{cancel}</div>
     </form>
     """

@@ -19,6 +19,8 @@ A backend system to track Management Information Systems (MIS) graduates, built 
 - [Troubleshooting](#troubleshooting)
 - [Progress](#progress)
 - **[Data Design Documentation (ddd.md)](ddd.md):** tables, columns, constraints, relationships, validation rules and migrations.
+- **[Brand Guide (brand.md)](brand.md):** the site's identity under Istanbul University: palette taken from the university's own colours (İÜ green, gold, navy), logo, typography, components, contrast rules and tone of voice.
+- **[Design System (DESIGN.md)](DESIGN.md):** the brand turned into a design system for people and AI agents, in the [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) / Google Stitch format: design tokens, component recipes, the motion and animation system, responsive rules and ready-to-use prompts.
 
 > **Rule:** Every change to the database (new table, new/renamed/removed column, type, constraint, index or relationship) must be documented in [ddd.md](ddd.md) in the same commit. `ddd.md` is the single source of truth for the data design, and tables change only through migrations.
 
@@ -343,7 +345,7 @@ AlumniTrackingSystem/
 │   │   └── application.py                       # Application ORM model, schemas + functions
 │   ├── views/
 │   │   ├── __init__.py
-│   │   ├── layout.py                            # Shared page skeleton: navbar, footer, helpers (render_page, page_header, ...)
+│   │   ├── layout.py                            # Shared page skeleton: fonts, navbar, footer, motion script, helpers (render_page, page_header, ...)
 │   │   ├── home_view.py                         # HTML for the home page
 │   │   ├── user_view.py                         # HTML for user list/detail/edit pages
 │   │   ├── announcement_view.py                 # HTML for announcement list/detail/edit pages
@@ -351,7 +353,7 @@ AlumniTrackingSystem/
 │   │   ├── application_view.py                  # HTML for the application list page
 │   │   └── error_view.py                        # HTML error pages: generic 404, 404 with a reason, 5xx
 │   ├── static/
-│   │   └── app.css                              # The one stylesheet used by every page
+│   │   └── app.css                              # The one stylesheet used by every page (tokens and components from DESIGN.md)
 │   └── templates/                               # Page body of /about (the layout adds navbar and footer)
 │       └── about.html
 ├── logs/                                        # error.logs (git ignored), written by the 5xx guardian
@@ -370,6 +372,8 @@ AlumniTrackingSystem/
 ├── .env                                         # Real values (git ignored)
 ├── .env.example                                 # Template, committed to git
 ├── ddd.md                                       # Data Design Documentation
+├── brand.md                                     # Brand Guide (logo, colours, type, components, tone)
+├── DESIGN.md                                    # Design System (tokens, components, motion, prompts)
 └── README.md
 ```
 

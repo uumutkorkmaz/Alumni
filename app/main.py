@@ -72,7 +72,7 @@ def read_root():
 
 @app.get("/about", response_class=HTMLResponse)
 def read_about():
-    return render_page("About", ABOUT_BODY, "/about", narrow=True)
+    return render_page("About", ABOUT_BODY, "/about", narrow=True, lang="tr")
 
 
 @app.get("/404", response_class=HTMLResponse, include_in_schema=False)

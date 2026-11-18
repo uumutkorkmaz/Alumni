@@ -13,10 +13,12 @@ DB_DOWN = '<p class="muted home-empty">Veriler şu an yüklenemiyor: veritabanı
 
 
 def _stat(href: str, value: str, label: str, note: str = "") -> str:
+    """A linked counter tile; the number counts up once when the tile comes into view."""
     note_html = f'<div class="note">{note}</div>' if note else ""
+    count = f' data-count="{value}"' if value.isdigit() else ""
     return (
-        f'<a class="stat" href="{href}"><div class="num">{value}</div>'
-        f'<div class="label">{label}</div>{note_html}</a>'
+        f'<a class="stat" href="{href}" data-reveal><div class="label">{label}</div>'
+        f'<div class="num"{count}>{value}</div>{note_html}</a>'
     )
 
 
@@ -47,7 +49,7 @@ def _postings(postings: list[dict] | None) -> str:
             f'<li><a class="home-item" href="/job-postings/{p["id"]}">'
             f'<span class="home-item-title">{escape(p["title"])}</span>'
             f'<span class="home-item-meta">{escape(p["company"])} &middot; {escape(p["city"])}</span>'
-            f'<span class="home-item-side"><span class="badge s-submitted">{kind}</span>'
+            f'<span class="home-item-side"><span class="badge info">{kind}</span>'
             f'<span class="home-item-date">{deadline}</span></span></a></li>'
         )
     return f'<ul class="home-list">{"".join(items)}</ul>'
@@ -76,15 +78,16 @@ def render_home(data: dict | None) -> str:
 
     body = f"""
   <section class="hero">
-    <span class="pill">İstanbul Üniversitesi &middot; YBS Mezun Ağı</span>
-    <h1>Mezunlar, iş ilanları ve başvurular <span>tek yerde</span></h1>
+    <span class="pill">İstanbul Üniversitesi &middot; İktisat Fakültesi &middot; YBS</span>
+    <h1>Mezunlar, iş ilanları ve başvurular <em>tek yerde</em></h1>
+    <span class="faculty-line" aria-hidden="true"></span>
     <p class="lead">
       Alumni Tracking System, Yönetim Bilişim Sistemleri mezunlarını kaydeder,
       bölüm duyurularını ve mezunların paylaştığı iş ilanlarını yayınlar,
       başvuruları baştan sona takip eder.
     </p>
     <div class="cta">
-      <a class="btn btn-primary" href="/job-postings">Açık ilanları gör</a>
+      <a class="btn btn-primary" href="/job-postings">Açık ilanları gör <span class="arrow" aria-hidden="true">&rarr;</span></a>
       <a class="btn btn-ghost" href="/users">Mezunlar</a>
       <a class="btn btn-ghost" href="/announcements">Duyurular</a>
     </div>
@@ -93,50 +96,50 @@ def render_home(data: dict | None) -> str:
   {_stats(counts)}
 
   <section class="home-grid">
-    <div class="card home-card">
+    <div class="card card-featured home-card" data-reveal>
       <div class="home-card-head">
         <h2>Açık iş ilanları</h2>
-        <a href="/job-postings">Tüm ilanlar &rarr;</a>
+        <a class="link-arrow" href="/job-postings">Tüm ilanlar <span class="arrow" aria-hidden="true">&rarr;</span></a>
       </div>
       {_postings(postings)}
     </div>
-    <div class="card home-card">
+    <div class="card home-card" data-reveal>
       <div class="home-card-head">
         <h2>Son duyurular</h2>
-        <a href="/announcements">Tüm duyurular &rarr;</a>
+        <a class="link-arrow" href="/announcements">Tüm duyurular <span class="arrow" aria-hidden="true">&rarr;</span></a>
       </div>
       {_announcements(announcements)}
     </div>
   </section>
 
   <section class="how">
-    <h2 class="section-title">Nasıl çalışır?</h2>
+    <div class="section-head"><h2>Nasıl çalışır?</h2><span class="label-mono">Üç adım</span></div>
     <ol class="steps">
-      <li class="step">
+      <li class="step" data-reveal>
         <span class="step-num">1</span>
         <h3>Mezunlar kaydedilir</h3>
         <p>Her mezun adı, e-postası, mezuniyet yılı ve bölümüyle sisteme eklenir.</p>
-        <a href="/users">Mezunlara git &rarr;</a>
+        <a class="link-arrow" href="/users">Mezunlara git <span class="arrow" aria-hidden="true">&rarr;</span></a>
       </li>
-      <li class="step">
+      <li class="step" data-reveal>
         <span class="step-num">2</span>
         <h3>İlanlar paylaşılır</h3>
         <p>Bölüm ya da mezunlar iş ve staj ilanı paylaşır; ilan son başvuru tarihine kadar açık kalır.</p>
-        <a href="/job-postings">İlanlara git &rarr;</a>
+        <a class="link-arrow" href="/job-postings">İlanlara git <span class="arrow" aria-hidden="true">&rarr;</span></a>
       </li>
-      <li class="step">
+      <li class="step" data-reveal>
         <span class="step-num">3</span>
         <h3>Başvurular takip edilir</h3>
         <p>Mezunlar ilanlara başvurur; başvurunun durumu incelemeden mülakata ve sonuca kadar izlenir.</p>
-        <a href="/applications">Başvurulara git &rarr;</a>
+        <a class="link-arrow" href="/applications">Başvurulara git <span class="arrow" aria-hidden="true">&rarr;</span></a>
       </li>
     </ol>
   </section>
 
   <p class="tech-strip">
-    FastAPI &middot; PostgreSQL &middot; SQLAlchemy &middot; Docker
-    &nbsp;|&nbsp; <a href="/api/swagger">API dokümantasyonu</a>
-    &nbsp;|&nbsp; <a href="/about">Proje hakkında</a>
+    <span>FastAPI &middot; PostgreSQL &middot; SQLAlchemy &middot; Docker</span>
+    <a href="/api/swagger">API dokümantasyonu</a>
+    <a href="/about">Proje hakkında</a>
   </p>
 """
-    return render_page("Home", body, "/")
+    return render_page("Home", body, "/", lang="tr")

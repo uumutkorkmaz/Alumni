@@ -119,7 +119,7 @@ The app is connected to PostgreSQL. The pages and the JSON API of each resource 
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/` | Home page with live counters (graduates, announcements, job postings, applications); still opens when the database is down (the counters show a dash) |
+| GET | `/` | Home page: what the system does, live counters (graduates, job postings and how many are open, applications, announcements), the newest open job postings, the latest announcements and "how it works" in three steps; still opens when the database is down (counters show a dash, the lists show a note) |
 | GET | `/about` | About page |
 | GET | `/404` | Generic 404 page; invalid browser requests are redirected here (answers 404) |
 | GET | `/api/health` | Health check |
@@ -331,7 +331,7 @@ AlumniTrackingSystem/
 │   ├── database/
 │   │   ├── __init__.py
 │   │   ├── connection.py                        # DB connection from DATABASE_URL
-│   │   ├── stats.py                             # Row counts for the home page counters
+│   │   ├── stats.py                             # Read-only queries for the home page (counters, newest open postings, latest announcements)
 │   │   ├── factories.py                         # UserFactory, AnnouncementFactory, JobPostingFactory (fake data)
 │   │   └── seed.py                              # Seeder: inserts fake data into the tables
 │   ├── models/
@@ -344,6 +344,7 @@ AlumniTrackingSystem/
 │   ├── views/
 │   │   ├── __init__.py
 │   │   ├── layout.py                            # Shared page skeleton: navbar, footer, helpers (render_page, page_header, ...)
+│   │   ├── home_view.py                         # HTML for the home page
 │   │   ├── user_view.py                         # HTML for user list/detail/edit pages
 │   │   ├── announcement_view.py                 # HTML for announcement list/detail/edit pages
 │   │   ├── job_posting_view.py                  # HTML for job posting list/detail/edit pages
@@ -351,8 +352,7 @@ AlumniTrackingSystem/
 │   │   └── error_view.py                        # HTML error pages: generic 404, 404 with a reason, 5xx
 │   ├── static/
 │   │   └── app.css                              # The one stylesheet used by every page
-│   └── templates/                               # Page bodies of / and /about (the layout adds navbar and footer)
-│       ├── index.html
+│   └── templates/                               # Page body of /about (the layout adds navbar and footer)
 │       └── about.html
 ├── logs/                                        # error.logs (git ignored), written by the 5xx guardian
 ├── migrations/                                  # Alembic migrations (database schema)
@@ -376,7 +376,7 @@ AlumniTrackingSystem/
 | Layer | Location | Responsibility |
 | --- | --- | --- |
 | **Model** | `app/models/` — SQLAlchemy ORM models (`User`, `Announcement`, `JobPosting`, `Application`, with the `User.job_postings` ↔ `JobPosting.posted_by` relationship and `Application` linking `User` and `JobPosting`), Pydantic schemas and the functions that read and write PostgreSQL | Defines the tables, their relationships and the rules of the data (each rule written once, here), e.g. a job posting needs a description or an application URL. Described in [ddd.md](ddd.md). |
-| **View** | `app/views/` (`layout.py` holds the shared navbar and page skeleton; one file per resource; `error_view.py` for error pages), `app/templates/` (bodies of `/` and `/about`), `app/static/app.css` | Builds the HTML returned to the browser. For the JSON API routes, the JSON response itself is the "view" served to API clients (Postman, Swagger UI). |
+| **View** | `app/views/` (`layout.py` holds the shared navbar and page skeleton; one file per resource; `error_view.py` for error pages), `app/templates/` (body of `/about`), `app/static/app.css` | Builds the HTML returned to the browser. For the JSON API routes, the JSON response itself is the "view" served to API clients (Postman, Swagger UI). |
 | **Controller** | `app/controllers/` — two independent controllers per resource: `UserController` + `ApiUserController`, `AnnouncementController` + `ApiAnnouncementController`, `JobPostingController` + `ApiJobPostingController`, `ApplicationController` + `ApiApplicationController` | Each controller has its own methods and its own `APIRouter`. The plain controller serves HTML pages; the `Api...` controller serves JSON. `main.py` registers all the routers with `app.include_router(...)`. |
 | **Middleware** | `app/middleware/` — logger, 404 guardian, 5xx guardian | Runs around every request, before and after the controller: logs it, and turns errors into answers with a reason (404) or an error id (5xx). See [Middleware](#middleware-the-request-pipeline). |
 

@@ -13,11 +13,12 @@ from app.controllers.api_user_controller import ApiUserController
 from app.controllers.application_controller import ApplicationController
 from app.controllers.job_posting_controller import JobPostingController
 from app.controllers.user_controller import UserController
-from app.database.stats import get_counts
+from app.database.stats import get_home_data
 from app.middleware.logger import log_requests
 from app.middleware.not_found_guardian import not_found_guardian
 from app.middleware.server_error_guardian import server_error_guardian
 from app.views.error_view import render_generic_not_found_page
+from app.views.home_view import render_home
 from app.views.layout import render_page
 
 app = FastAPI(title="Alumni Tracking System")
@@ -36,8 +37,7 @@ if os.environ.get("DEBUG_ROUTES") == "1":
 APP_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 
-# The templates are page bodies only; render_page adds the shared navbar, stylesheet and footer.
-INDEX_BODY = (APP_DIR / "templates" / "index.html").read_text(encoding="utf-8")
+# The about template is a page body only; render_page adds the shared navbar, stylesheet and footer.
 ABOUT_BODY = (APP_DIR / "templates" / "about.html").read_text(encoding="utf-8")
 
 user_controller = UserController()
@@ -67,11 +67,7 @@ app.include_router(application_controller.router)
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    counts = get_counts()
-    body = INDEX_BODY
-    for name in ("users", "announcements", "job_postings", "applications"):
-        body = body.replace("{{" + name + "}}", str(counts[name]) if counts else "&ndash;")
-    return render_page("Home", body, "/")
+    return render_home(get_home_data())
 
 
 @app.get("/about", response_class=HTMLResponse)

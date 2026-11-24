@@ -443,6 +443,10 @@ Three cards in a row; each opens with a 32 px circle with a 1 px gold hairline a
 **Role:** the bottom of every page.
 1 px Hairline top rule, 24 px padding, centered IBM Plex Mono 12 px upper case Archive Gray, two parts: `YBSB3001 — WEB PROGRAMMING` (`lang="en"`) and `İSTANBUL ÜNİVERSİTESİ · İKTİSAT FAKÜLTESİ · YÖNETİM BİLİŞİM SİSTEMLERİ` (`lang="tr"`), so each language gets its own upper-case letters.
 
+### Page Hero
+**Role:** the top of every page except the home page: the home hero without the film (homework: "apply the home page design to all pages").
+Centred over the Ledger Grid: the gold Eyebrow pill, a Source Serif 4 500 title (one phrase may be the gold italic `<em>`), optional meta line, the Faculty Line, a lead in Archive Gray and the page's buttons (one primary). Two sizes: **page** (lists and About; title clamp(36px, 5vw, 56px), 40 px top and bottom) and **compact** (details, edit and error pages; title clamp(30px, 4vw, 44px)). Built by `page_hero()` in `layout.py`; `stat_tiles()` and `section_head()` give the home page's counters and section titles. Under it, lists show 4 Stat Tiles; numbers count up, years and spans are shown as text.
+
 ### Kicker
 **Role:** the small label above every page title that says what kind of page this is (`DIRECTORY · GRADUATES`, `ANNOUNCEMENT #4`, `ERROR 404`).
 IBM Plex Mono 500 12 px upper case, 0.08em, Archive Gray, after a 6 px İÜ Green dot. On **edit pages** the kicker turns Gold Tint with a gold dot (`EDITING · USER #3`): the one gold signal that a record is being changed. The gold Eyebrow pill stays on the home hero only.
@@ -458,6 +462,16 @@ Three tiles in a row, Ledger Panel, 14 px radius, 16 × 20 px padding; mono capt
 ### Pipeline
 **Role:** how many applications are at each status, above the applications table.
 Six stages in a row, left to right in the usual order (submitted → under review → interview → accepted → rejected → withdrawn); Ledger Panel, 12 px radius, a 3 px bottom edge and caption in the status colour from §2.4, Source Serif 4 28 px number in Paper Text that counts up. 3 × 2 below 900 px, 2 × 3 below 720 px.
+
+### Album Card
+**Role:** one graduate on the Users page, as one of many photos tossed on a table (after the tilted photo clusters of the San Rita reference, in this system's colours).
+- **Band:** above the cards a huge Source Serif 4 word, `Graduates`, clamp(84px, 15vw, 216px), line height 0.9, letter spacing 0.01em, drawn as a clean 1.5 px Green Tint outline (45 %): a 3 px stroke painted first and the solid fill `#142220` (Midnight Ink with 7 % Green Tint) on top (`paint-order: stroke fill`), so the overlapping contours inside the variable font's letters never show. The photos are tossed over its lower half. Decorative (`aria-hidden`).
+- **Photo:** raw, no frame, square corners, 4:5. The picture is a spot of the campus film (`app/static/film/thumbs/t01–t32.webp`: the gate, the avenue, the Rectorate), chosen by the user id so a graduate always gets the same one; slightly desaturated. The pictures are campus places, not portraits: the database has no photos of graduates.
+- **On the photo:** the initials top left in Source Serif 4 44 px; a mono `#07` tag top right in Gold Tint on a dark pill; at the bottom, over a Midnight Ink fade, the name in IBM Plex Mono 500 13 px upper case and `CLASS OF 2017 · DEPARTMENT` in mono 10 px Green Tint.
+- **Scatter:** tilts −7° … +7°, shifts of ±8 px across and 0–30 px down, taken from the card's position in the list, so neighbours never share an angle. Each card lies on top of the one before it: the names sit on the left, so a card only covers the empty right edge of its neighbour. Cards are 104 % of their grid cell, so the edges overlap a little. A soft table shadow under each photo.
+- **Grid:** `repeat(auto-fill, minmax(230px, 1fr))`, 34 px rows, 14 px columns. Phones: two columns, half the tilt, no overlap.
+- **Actions:** Edit and Delete appear under the photo when the card is hovered or focused (always visible on touch screens).
+- **Switch:** an **Album / Table** switch (mono, the active one with a gold underline) next to the filter keeps the plain table one click away; the choice is remembered in the browser. The filter works on both.
 
 ### Form Card
 **Role:** the create form under each list.
@@ -498,7 +512,7 @@ A featured card (Faculty Line on its top edge) with the form title in Source Ser
 - **Section gap:** 64 px on the home page, 32 px inside app pages.
 - **Card padding:** 24 px · **Element gap:** 12–16 px · **Grid gap:** 16–20 px.
 - **Home page order:** hero → 4 stat tiles → two columns (open job postings 3fr, latest announcements 2fr) → three steps → footer line.
-- **App page order:** page header (title + one primary action on the right) → filter row → table card → create form card.
+- **App page order:** the home page's outline on every page (the Scroll Film excepted): Page Hero → stat tiles → section heads, filter row, table or album → create form card.
 
 ### Page patterns
 
@@ -506,17 +520,17 @@ Each page of the app, and the pattern it uses (all in `app/views/`; `/about` in 
 
 | Page | Pattern |
 |------|---------|
-| `/` Home (Turkish) | Hero over the Ledger Grid (gold eyebrow pill, serif headline with one gold italic phrase, Faculty Line, lead, CTA) → 4 counting stat tiles → open postings (featured card) and latest announcements → three steps → mono tech strip. |
-| `/about` (Turkish) | Kicker, large serif title, Faculty Line, lead → four fact tiles (the "status" dot pulses three times) → roadmap timeline with mono stage numbers. |
-| `/users` | Header with kicker `DIRECTORY · GRADUATES` → count and class-year span → table with avatars, mono ids and years → form card. |
-| `/users/{id}` | Profile header (64 px avatar, kicker `USER #ID · CLASS OF YEAR`, serif name) → featured card with the details. |
-| `/announcements` | Header `NOTICE BOARD` → table with each title and a one-line excerpt under it → form card. |
-| `/announcements/{id}` | Article: kicker, large serif title, mono meta, Faculty Line → the text in a card at reading width (68ch). |
-| `/job-postings` | Header `CAREERS · POSTINGS` → summary strip → table (title with the company under it, neutral type, status badge) → form card. |
-| `/job-postings/{id}` | Article header → two columns: role description and applicants table (1.7fr); a sticky side column with the facts card and the apply form (1fr). One column below 900 px. |
-| `/applications` | Header `PIPELINE · APPLICATIONS` → pipeline → table with avatars and the inline status change → form card. |
-| `…/edit` pages | Narrow; gold `EDITING · …` kicker → featured card with the form, Save and Cancel → back link to the record. |
-| 404 / 5xx | Narrow; the code in serif 64 px beside kicker, title and Faculty Line → featured card with mono labels (Requested, Reason, Error id, Request) → actions. |
+| `/` Home (Turkish) | Scroll Film (§7) carrying the hero (gold eyebrow pill, serif headline with one gold italic phrase, Faculty Line, lead, CTA) and two more captions → 4 counting stat tiles → open postings (featured card) and latest announcements → three steps → mono tech strip. |
+| `/about` (Turkish) | Page Hero (`PROJE · YBSB3001`, "Proje *hakkında*") → four fact tiles (course, status, backend, database) → section head "Yol haritası" → the roadmap timeline in a featured card. |
+| `/users` | Page Hero (`DIRECTORY · GRADUATES`, "The class *album*") → 4 stat tiles (graduates, class span, departments, newest class) → count, Album / Table switch and filter → the class album of Album Cards (or the table) → form card. |
+| `/users/{id}` | Compact Page Hero (`USER #ID · CLASS OF YEAR`, the name, the department; Edit and Applications) → featured card with the details. |
+| `/announcements` | Page Hero (`NOTICE BOARD`, "News for *graduates*") → 4 stat tiles (announcements, this year, authors, latest date) → table with each title and a one-line excerpt → form card. |
+| `/announcements/{id}` | Compact Page Hero (`ANNOUNCEMENT #ID`, the title, author and date as meta; Edit and All announcements) → the text in a featured card at reading width (68ch). |
+| `/job-postings` | Page Hero (`CAREERS · POSTINGS`, "Jobs and *internships*") → 4 stat tiles (postings, open, closed, internships) → table (title with the company under it, type, status badge) → form card. |
+| `/job-postings/{id}` | Compact Page Hero (`JOB POSTING #ID · TYPE`, the title, company · city · status; Apply when open, Edit, All job postings) → two columns: role description (featured) and applicants (1.7fr); a sticky side column with the facts card and the apply form (1fr). One column below 900 px. |
+| `/applications` | Page Hero (`PIPELINE · APPLICATIONS`, "Applications, *step by step*") → 4 stat tiles (applications, in progress, interviews, accepted) → section head "By status" and the pipeline → table with avatars and the inline status change → form card. |
+| `…/edit` pages | Narrow; compact Page Hero (`EDITING · USER #3`, "Edit *user*") → featured card with the form, Save and Cancel → back link to the record. |
+| 404 / 5xx | Narrow; compact Page Hero (`ERROR 404`, the title, the reason in one sentence; the way out as buttons) → featured card with mono labels (Requested, Reason, Error id, Request). |
 
 ## 6. Depth & Elevation
 
@@ -565,13 +579,32 @@ Motion makes the interface feel finished and alive without asking for attention:
 | **Focus** | Any interactive element | The ring appears at once (no transition): focus must never feel late. |
 | **Loading shimmer** | Placeholder rows while a list loads | A soft light band across `--color-panel-2`, 1.4 s linear, repeats; contrast stays under 1.1 : 1. |
 | **Page change** | Navigating between pages | Cross-fade 200 ms with the View Transitions API where the browser supports it; nothing where it does not. |
+| **Album toss** | Album Cards on `/users` | Once, as they come into view: from 72 px lower, 2.2 times their tilt and 92 % size to their place, 760 ms Ease Out, 80 ms stagger, like photos thrown on a table. Under the pointer a card comes to the top, straightens, lifts 8 px, grows to 106 % and gets the floating shadow; its photo zooms to 106 % and regains full colour. |
+| **Scroll Film** | The home page hero only | See below. The one exception to rules 3 and 4. |
+
+### Scroll Film (home page only)
+
+A 10-second film (generated with Google Flow from photos of the campus) walks from Beyazıt Square through the main gate of Istanbul University and down the plane-tree avenue to the Rectorate. It plays **with the scroll**, not by itself: scrolling down moves forward, scrolling up moves back. **Desktop only** (900 px and wider); phones get the still version.
+
+| Part | Spec |
+|------|------|
+| Placement | Edge to edge under the navbar, outside the page container (`render_page(..., full_width=film)`); only on `/`. |
+| Technique | A frame sequence drawn on a `<canvas>`, not a video: 160 WebP frames (16 per second of film) in two sets made from the 1080p Flow export: **1920×1080** (about 124 KB a frame, 19.4 MB) for canvases wider than 1400 device pixels, and **1280×720** (about 73 KB, 11.5 MB) for smaller screens. Quality 74: quality 66 saved only 9 % and lost detail. Picking a frame costs nothing, unlike seeking an mp4 (about 80 ms per seek), so it runs at 60 fps on ordinary computers (measured: 7 ms median, 14 ms at the 95th percentile while scrolling fast). |
+| Loading | Coarse to fine: every 16th frame first (plus the last), then every 8th, 4th, 2nd and the rest, at most 6 requests at a time, each decoded before use. Scrolling works as soon as the first frames arrive and gets finer while the rest load; until a frame is there, its nearest loaded neighbour is drawn. |
+| Length | The section is 320vh tall; its stage sticks to the screen (100vh) while the section scrolls past. Scroll progress 0 → 1 maps to frame 1 → 160. |
+| Easing | The shown position eases toward the scroll position (18 % of the gap per animation frame: a light inertia) and the two neighbouring frames are blended by the fraction between them, so the motion stays smooth between frames. When the scroll stops (140 ms), the film settles on the nearest whole frame, so a still picture is never a double image. Frames are scaled with `imageSmoothingQuality = high`. Nothing is drawn while the film is off screen. |
+| Shade | A Midnight Ink overlay (70 % at the top, 45–55 % in the middle, solid ink at the bottom so the film runs into the page) and a soft dark centre behind the text. Captions stay readable on every frame. |
+| Captions | Three, each shown for a range of the progress: 0–0.30 the hero; 0.36–0.66 `BEYAZIT · ANA KAPI` "Her mezun bir gün bu kapıdan geçti."; 0.74–1 `REKTÖRLÜK` "Ağ burada büyüyor.". They fade and rise 12 px (Entrance). Kickers are Gold Tint here. |
+| Signs | A "Kaydırın" cue with a gold line under the hero; a 2 px Faculty Line progress bar along the bottom of the stage. |
+| Fallback | On screens narrower than 900 px, without JavaScript, without canvas, under `prefers-reduced-motion`, or before the script runs: one screen, the first frame as a picture, the hero caption, no cue, no bar. Only that one frame is downloaded. |
+| Files | `app/static/film/frames/1080/` and `frames/720/`, `f001.webp` … `f160.webp` each, made from the 1080p Flow mp4 with ffmpeg in one pass: `-filter_complex "fps=16,split=2[a][b];[a]scale=1920:1080:flags=lanczos[o1];[b]scale=1280:720:flags=lanczos[o2]"` and `-c:v libwebp -quality 74 -compression_level 6 -preset photo` for each output. The still picture uses `srcset` to pick the right first frame. The frame count is `FILM_FRAMES` in `home_view.py`. Served as `image/webp` (registered in `main.py`). |
 
 ### Rules
 
 1. Animate only `opacity` and `transform` (and `background-color` / `border-color` for hovers): never `width`, `height`, `top` or `margin`.
 2. Entrances run once; nothing re-animates on scroll back or on every hover of a static element.
 3. At most one entrance group plays at a time; total entrance time of a page stays under 1 second.
-4. Moving distance is small: 2 px for hovers, 8–12 px for entrances. No bouncing, no overshoot, no rotation, no parallax.
+4. Moving distance is small: 2 px for hovers, 8–12 px for entrances. No bouncing, no overshoot, no rotation, no parallax (the Scroll Film below is the single, deliberate exception).
 5. **`prefers-reduced-motion: reduce`:** all transforms and the shimmer are switched off, durations drop to 1 ms, counters show their final number at once, the Faculty Line is drawn from the start. Colour changes stay.
 6. Content is readable before any animation finishes: an element that never animates (no JavaScript, old browser) must still be fully visible.
 
@@ -640,6 +673,7 @@ Motion makes the interface feel finished and alive without asking for attention:
 
 - **Token names in code:** `app.css` drops the `color-` prefix of the Quick Start (`--primary` for `--color-primary`); the values are the same.
 - **Tables on phones** scroll sideways inside their card instead of turning into cards.
+- **Scroll Film weight:** desktops load 11.5 MB (1280 set) or 19.4 MB (1920 set) of frames on the first visit to the home page (cached afterwards). Phones load only the first frame; a phone version of the film is not made.
 - **Front matter limits:** the Stitch format has no tokens for motion, gradients, borders or focus rings, so those live in the prose (§2.3, §7) and in the Quick Start CSS. `hero-display` is listed at 64px; on the page it is `clamp(40px, 6vw, 64px)`.
 - **Status badge fills** are translucent tints (§2.4); the front matter lists the nearest solid surface because it takes plain hex values only.
 - **Light mode** is not defined; the site is dark only (`color-scheme: dark`).

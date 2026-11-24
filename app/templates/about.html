@@ -1,56 +1,51 @@
-<section class="about-hero">
-  <span class="kicker">Proje &middot; YBSB3001</span>
-  <h1>Proje Hakkında</h1>
+<section class="hero hero--page">
+  <span class="pill">Proje &middot; YBSB3001</span>
+  <h1>Proje <em>hakkında</em></h1>
   <span class="faculty-line" aria-hidden="true"></span>
   <p class="lead">
     Alumni Tracking System, İstanbul Üniversitesi İktisat Fakültesi Yönetim Bilişim Sistemleri (YBS)
     mezunlarının kariyer bilgilerini takip etmek amacıyla Web Programming (YBSB3001) dersi kapsamında
     geliştirilen bir web uygulamasıdır.
   </p>
+  <div class="cta">
+    <a class="btn btn-primary" href="/">Ana sayfa <span class="arrow" aria-hidden="true">&rarr;</span></a>
+    <a class="btn btn-ghost" href="/api/swagger">API dokümantasyonu</a>
+  </div>
 </section>
 
-<div class="grid-2">
-  <div class="info-card" data-reveal>
-    <h3>Ders</h3>
-    <p>YBSB3001 &mdash; Web Programming</p>
-  </div>
-  <div class="info-card" data-reveal>
-    <h3>Durum</h3>
-    <p class="status">Geliştirme aşamasında</p>
-  </div>
-  <div class="info-card" data-reveal>
-    <h3>Backend</h3>
-    <p>FastAPI (Python), MVC</p>
-  </div>
-  <div class="info-card" data-reveal>
-    <h3>Veritabanı</h3>
-    <p>PostgreSQL &middot; SQLAlchemy &middot; Alembic</p>
-  </div>
-</div>
+<section class="stats" aria-label="Proje özeti">
+  <div class="stat" data-reveal><div class="label">Ders</div><div class="num num-text">YBSB3001</div><div class="note">Web Programming</div></div>
+  <div class="stat" data-reveal><div class="label">Durum</div><div class="num num-text">Geliştiriliyor</div><div class="note">Haftalık ödevlerle</div></div>
+  <div class="stat" data-reveal><div class="label">Backend</div><div class="num num-text">FastAPI</div><div class="note">Python &middot; MVC</div></div>
+  <div class="stat" data-reveal><div class="label">Veritabanı</div><div class="num num-text">PostgreSQL</div><div class="note">SQLAlchemy &middot; Alembic</div></div>
+</section>
 
 <div class="section-head"><h2>Yol haritası</h2><span class="label-mono">Dört aşama</span></div>
-<ol class="timeline">
-  <li class="timeline-item" data-reveal>
-    <span class="label-mono">Aşama 01</span>
-    <h4>Temel API iskeleti</h4>
-    <p>FastAPI projesi kuruldu, Docker &amp; Docker Compose ile çalışır hale getirildi.</p>
-  </li>
-  <li class="timeline-item" data-reveal>
-    <span class="label-mono">Aşama 02</span>
-    <h4>Mezunlar ve duyurular</h4>
-    <p>Kullanıcı ve duyuru modelleri, JSON API ve tarayıcıdan yönetim sayfaları eklendi.</p>
-  </li>
-  <li class="timeline-item" data-reveal>
-    <span class="label-mono">Aşama 03</span>
-    <h4>PostgreSQL entegrasyonu</h4>
-    <p>Migration&apos;lar, factory &amp; seed ve ORM modelleri ile uygulama veritabanına bağlandı.</p>
-  </li>
-  <li class="timeline-item" data-reveal>
-    <span class="label-mono">Aşama 04</span>
-    <h4>İş ilanları ve başvurular</h4>
-    <p>Mezunlar iş ilanlarına başvurabiliyor; ilanlar ve başvurular hem API hem arayüz üzerinden yönetiliyor.
-      Middleware, hata günlüğü ve genel 404 sayfası eklendi.</p>
-  </li>
-</ol>
+<section class="card card-featured" data-reveal>
+  <ol class="timeline">
+    <li class="timeline-item">
+      <span class="label-mono">Aşama 01</span>
+      <h4>Temel API iskeleti</h4>
+      <p>FastAPI projesi kuruldu, Docker &amp; Docker Compose ile çalışır hale getirildi.</p>
+    </li>
+    <li class="timeline-item">
+      <span class="label-mono">Aşama 02</span>
+      <h4>Mezunlar ve duyurular</h4>
+      <p>Kullanıcı ve duyuru modelleri, JSON API ve tarayıcıdan yönetim sayfaları eklendi.</p>
+    </li>
+    <li class="timeline-item">
+      <span class="label-mono">Aşama 03</span>
+      <h4>PostgreSQL entegrasyonu</h4>
+      <p>Migration&apos;lar, factory &amp; seed ve ORM modelleri ile uygulama veritabanına bağlandı.</p>
+    </li>
+    <li class="timeline-item">
+      <span class="label-mono">Aşama 04</span>
+      <h4>İş ilanları, başvurular ve tasarım</h4>
+      <p>Mezunlar iş ilanlarına başvurabiliyor; middleware, hata günlüğü ve genel 404 sayfası eklendi.
+        Ana sayfanın tasarımı (İÜ renkleri, hero, sayaçlar) bütün sayfalara uygulandı; ana sayfaya kaydırmalı
+        kampüs filmi eklendi.</p>
+    </li>
+  </ol>
+</section>
 
 <a class="back-link" href="/"><span aria-hidden="true">&larr;</span> Ana sayfaya dön</a>

@@ -4,14 +4,17 @@ from html import escape
 from app.views.layout import (
     alert,
     back_link,
+    button,
     edit_header,
     filter_toolbar,
     form_card,
     new_button,
-    page_header,
+    page_hero,
     plural,
     render_page,
     row_actions,
+    section_head,
+    stat_tiles,
 )
 
 ACTIVE = "/job-postings"
@@ -86,14 +89,21 @@ def render_job_posting_list(
     open_count = sum(1 for p in postings if is_open(p))
 
     error_box = alert(f"The job posting was not saved. {error}") if error else ""
+    stats = stat_tiles([
+        ("Postings", len(postings), "", ""),
+        ("Open", open_count, "", "accepting applications"),
+        ("Closed", len(postings) - open_count, "", ""),
+        ("Internships", sum(1 for p in postings if p["employment_type"] == "internship"), "", ""),
+    ], "Job postings in numbers")
     body = f"""
+    {page_hero(
+        "Careers &middot; Postings",
+        "Jobs and <em>internships</em>",
+        "Positions shared by the department and by graduates. A posting stays open until its deadline, or until it is closed.",
+        new_button("New job posting") + button("Applications", "/applications"),
+    )}
     {error_box}
-    {page_header("Job Postings", "Jobs and internships shared with graduates.", new_button("New job posting"), kicker="Careers · Postings", line=True)}
-    <section class="summary" aria-label="Summary">
-      <div class="summary-item" data-reveal><div class="label-mono">Postings</div><div class="num" data-count="{len(postings)}">{len(postings)}</div></div>
-      <div class="summary-item is-open" data-reveal><div class="label-mono">Open</div><div class="num" data-count="{open_count}">{open_count}</div></div>
-      <div class="summary-item is-closed" data-reveal><div class="label-mono">Closed</div><div class="num" data-count="{len(postings) - open_count}">{len(postings) - open_count}</div></div>
-    </section>
+    {stats}
     {filter_toolbar("postings-table", f"{plural(len(postings), 'posting')} &middot; {open_count} open")}
     <div class="table-wrap" data-reveal>
       <table id="postings-table">
@@ -133,24 +143,26 @@ def render_job_posting_detail(
         apply_form = '<p class="muted" style="margin: 0">This posting is closed, so nobody can apply to it.</p>'
 
     body = f"""
+    {page_hero(
+        f"Job posting #{posting['id']} &middot; {_type_label(posting)}",
+        escape(posting['title']),
+        "",
+        (button("Apply", "#apply", "primary", arrow=True) if is_open(posting) else "")
+        + button("Edit", f"/job-postings/{posting['id']}/edit")
+        + button("All job postings", "/job-postings"),
+        meta=f"<span>{escape(posting['company'])}</span><span>{escape(posting['city'])}</span>{_status_badge(posting)}",
+        size="compact",
+    )}
     {alert(error)}
-    <header class="article-head">
-      <span class="kicker">Job posting #{posting['id']} &middot; {_type_label(posting)}</span>
-      <h1>{escape(posting['title'])}</h1>
-      <p class="meta">
-        <span>{escape(posting['company'])}</span><span>{escape(posting['city'])}</span>{_status_badge(posting)}
-      </p>
-      <span class="faculty-line" aria-hidden="true"></span>
-    </header>
 
     <div class="detail-grid">
       <div class="detail-main">
-        <section class="card" data-reveal>
+        <section class="card card-featured" data-reveal>
           <h2>About the role</h2>
           <p class="content">{escape(posting['description']) if posting['description'] else NO_DESCRIPTION}</p>
         </section>
 
-        <div class="section-head"><h2>Applicants</h2><span class="label-mono">{plural(len(applications), "application")}</span></div>
+        {section_head("Applicants", plural(len(applications), "application"))}
         <div class="table-wrap" data-reveal>
           <table>
             <thead><tr><th>Applicant</th><th>Status</th><th>Cover letter</th><th>Applied</th></tr></thead>
@@ -160,7 +172,7 @@ def render_job_posting_detail(
       </div>
 
       <aside class="detail-side">
-        <section class="card card-featured" data-reveal>
+        <section class="card" data-reveal>
           <dl class="dl">
             <dt>Company</dt><dd>{escape(posting['company'])} &middot; {escape(posting['city'])}</dd>
             <dt>Posted by</dt><dd>{_user_link(posting['posted_by_user_id'], users_by_id)}</dd>
@@ -168,12 +180,8 @@ def render_job_posting_detail(
             <dt>Apply at</dt><dd>{_external_link(posting['application_url'])}</dd>
             <dt>Created</dt><dd class="mono">{posting['created_at']}</dd>
           </dl>
-          <div class="detail-actions">
-            <a class="btn btn-primary btn-sm" href="/job-postings/{posting['id']}/edit">Edit</a>
-            <a class="btn btn-ghost btn-sm" href="/applications">All applications</a>
-          </div>
         </section>
-        <section class="card" id="apply" data-reveal>
+        <section class="card card-featured" id="apply" data-reveal>
           <h2>Apply</h2>
           {apply_form}
         </section>

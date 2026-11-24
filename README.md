@@ -121,7 +121,7 @@ The app is connected to PostgreSQL. The pages and the JSON API of each resource 
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/` | Home page: what the system does, live counters (graduates, job postings and how many are open, applications, announcements), the newest open job postings, the latest announcements and "how it works" in three steps; still opens when the database is down (counters show a dash, the lists show a note) |
+| GET | `/` | Home page: a scroll film on desktops (the walk from Beyazıt Square through the main gate to the Rectorate plays as you scroll; a still picture on phones) carrying what the system does, live counters (graduates, job postings and how many are open, applications, announcements), the newest open job postings, the latest announcements and "how it works" in three steps; still opens when the database is down (counters show a dash, the lists show a note) |
 | GET | `/about` | About page |
 | GET | `/404` | Generic 404 page; invalid browser requests are redirected here (answers 404) |
 | GET | `/api/health` | Health check |
@@ -134,7 +134,7 @@ HTML forms can only send GET and POST, so update and delete use POST sub-routes;
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/users` | User list + create form (`User` tag in Swagger) |
+| GET | `/users` | Graduates as a class album of photo cards (or a table, one click away) + create form (`User` tag in Swagger) |
 | POST | `/users` | Create a user (form submit) |
 | GET | `/users/{id}` | User detail page |
 | GET | `/users/{id}/edit` | Edit form |
@@ -345,7 +345,7 @@ AlumniTrackingSystem/
 │   │   └── application.py                       # Application ORM model, schemas + functions
 │   ├── views/
 │   │   ├── __init__.py
-│   │   ├── layout.py                            # Shared page skeleton: fonts, navbar, footer, motion script, helpers (render_page, page_header, ...)
+│   │   ├── layout.py                            # Shared page skeleton: fonts, navbar, footer, motion script, helpers (render_page, page_hero, stat_tiles, ...)
 │   │   ├── home_view.py                         # HTML for the home page
 │   │   ├── user_view.py                         # HTML for user list/detail/edit pages
 │   │   ├── announcement_view.py                 # HTML for announcement list/detail/edit pages
@@ -353,7 +353,10 @@ AlumniTrackingSystem/
 │   │   ├── application_view.py                  # HTML for the application list page
 │   │   └── error_view.py                        # HTML error pages: generic 404, 404 with a reason, 5xx
 │   ├── static/
-│   │   └── app.css                              # The one stylesheet used by every page (tokens and components from DESIGN.md)
+│   │   ├── app.css                              # The one stylesheet used by every page (tokens and components from DESIGN.md)
+│   │   └── film/
+│   │       ├── frames/                          # The home page scroll film (10 s, Google Flow): 1080/ and 720/, f001.webp ... f160.webp each
+│   │       └── thumbs/                          # t01.webp ... t32.webp: campus pictures for the graduate album on /users
 │   └── templates/                               # Page body of /about (the layout adds navbar and footer)
 │       └── about.html
 ├── logs/                                        # error.logs (git ignored), written by the 5xx guardian

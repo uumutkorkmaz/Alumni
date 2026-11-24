@@ -386,14 +386,6 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 }
 .alert-error { background: #2a1714; border: 1px solid rgba(220, 53, 69, 0.4); color: #f3d9d6; }
 
-/* ---------- Summary strip (job postings) ---------- */
-.summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
-.summary-item { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; }
-.summary-item .label-mono { font-size: 11px; }
-.summary-item .num { font-family: var(--font-display); font-size: 32px; font-weight: 500; line-height: 1.1; margin-top: 6px; }
-.summary-item.is-open .num { color: var(--primary-light); }
-.summary-item.is-closed .num { color: var(--muted); }
-
 /* ---------- Application pipeline: one stage per status ---------- */
 .pipeline { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 24px; }
 .stage {
@@ -424,13 +416,6 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
 .divider { height: 1px; background: var(--border); border: 0; margin: 24px 0; }
 
-.profile { display: flex; align-items: center; gap: 20px; margin-bottom: 28px; }
-.profile .kicker { margin-bottom: 6px; }
-
-.article-head { margin-bottom: 28px; }
-.article-head h1 { font-size: clamp(30px, 4.5vw, 44px); line-height: 1.12; letter-spacing: -0.015em; }
-.article-head .faculty-line { margin-top: 20px; }
-
 .detail-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .detail-main { min-width: 0; }
 .detail-side { position: sticky; top: 88px; display: grid; gap: 16px; }
@@ -439,10 +424,6 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 .detail-side .dl dd { margin-bottom: 12px; }
 .detail-side .dl dd:last-child { margin-bottom: 0; }
 .detail-side .form-grid { grid-template-columns: 1fr; }
-
-/* Edit pages: the kicker turns gold to mark "you are changing a record" */
-.edit-head .kicker { color: var(--gold-light); }
-.edit-head .kicker::before { background: var(--gold); }
 
 /* ---------- Home page ---------- */
 .hero { position: relative; text-align: center; padding: 72px 0 56px; isolation: isolate; }
@@ -491,7 +472,21 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 .lead { max-width: 60ch; margin: 0 auto 32px; color: var(--muted); font-size: 18px; line-height: 1.6; }
 .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 8px 0 48px; }
+/* The home hero on every other page (layout.page_hero): same ledger grid, pill, serif title,
+   Faculty Line, lead and buttons; shorter, and smaller still on detail, edit and error pages. */
+.hero--page { padding: 40px 0 40px; }
+.hero--page h1 { font-size: clamp(36px, 5vw, 56px); max-width: 22ch; }
+.hero--compact { padding: 24px 0 32px; }
+.hero--compact h1 { font-size: clamp(30px, 4vw, 44px); max-width: 26ch; }
+.hero--page .pill, .hero--compact .pill { margin-bottom: 22px; }
+.hero--page .faculty-line, .hero--compact .faculty-line { margin: 22px auto 18px; }
+.hero--page .lead, .hero--compact .lead { margin-bottom: 26px; font-size: 17px; }
+.hero--compact .lead { margin-bottom: 22px; }
+.hero .meta { justify-content: center; margin-top: 16px; }
+.hero + .alert { margin-top: 0; }
+.hero-avatar { margin: 0 auto 18px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 8px 0 48px; }
 .stat {
   display: block;
   background: var(--panel);
@@ -501,9 +496,10 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   color: var(--text);
   transition: transform var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
 }
-.stat:hover { transform: translateY(-2px); border-color: rgba(67, 156, 134, 0.45); color: var(--text); text-decoration: none; }
+a.stat:hover { transform: translateY(-2px); border-color: rgba(67, 156, 134, 0.45); color: var(--text); text-decoration: none; }
 .stat .label { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .stat .num { font-family: var(--font-display); font-size: 44px; font-weight: 500; letter-spacing: -0.02em; line-height: 1; margin-top: 12px; }
+.stat .num-text { font-size: 26px; line-height: 1.15; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .stat .note { color: var(--primary-light); font-size: 13px; margin-top: 10px; }
 .stat .note::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); margin-right: 8px; vertical-align: middle; }
 
@@ -572,6 +568,284 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   color: var(--muted);
 }
 
+/* ---------- Home: scroll film (DESIGN.md §7, Scroll Film) ----------
+   Static by default: one screen, the first frame and the first caption. On desktops (900px and
+   wider, not under reduced motion) the script adds .film--live: the section grows to 320vh, the
+   stage sticks to the screen and the frame drawn on the canvas follows the scroll position. */
+.film { position: relative; }  /* rendered edge to edge, outside .container (render_page full_width) */
+.film-stage {
+  position: relative;
+  height: calc(100vh - 64px);
+  min-height: 560px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+.film-poster, .film-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  background: var(--ink);
+}
+.film-canvas { opacity: 0; }
+.film--ready .film-canvas { opacity: 1; }
+.film-shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 60% 55% at 50% 50%, rgba(13, 22, 20, 0.55), transparent 75%),
+    linear-gradient(180deg, rgba(13, 22, 20, 0.70) 0%, rgba(13, 22, 20, 0.45) 35%, rgba(13, 22, 20, 0.55) 70%, var(--ink) 100%);
+}
+.film-step {
+  grid-area: 1 / 1;
+  width: min(100% - 48px, 860px);
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px);
+  transition: opacity var(--dur-entrance) var(--ease-out), transform var(--dur-entrance) var(--ease-out), visibility 0s linear var(--dur-entrance);
+}
+.film-step.is-active { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.film .hero { padding: 0; }
+.film .hero::before { display: none; }
+.film .lead { color: rgba(227, 233, 230, 0.86); }
+.film .kicker { color: var(--gold-light); }
+.film .kicker::before { background: var(--gold); }
+.film-title {
+  margin: 4px 0 14px;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+.film-text { margin: 0 auto; max-width: 52ch; color: rgba(227, 233, 230, 0.86); font-size: 18px; }
+.film-cue { display: none; }
+.film-progress { display: none; }
+
+.film--live { height: 320vh; }
+.film--live .film-stage { position: sticky; top: 0; height: 100vh; }
+.film--live .film-cue {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 40px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(227, 233, 230, 0.7);
+}
+.film--live .film-cue::after {
+  content: "";
+  width: 1px;
+  height: 36px;
+  background: linear-gradient(var(--gold), transparent);
+  transform-origin: top;
+  animation: at-cue 1.8s var(--ease-in-out) infinite;
+}
+.film--live .film-progress {
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(227, 233, 230, 0.08);
+}
+.film--live .film-progress span {
+  display: block;
+  height: 100%;
+  background: var(--gradient-line);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+@keyframes at-cue { 0% { transform: scaleY(0); opacity: 1; } 70% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleY(1); opacity: 0; } }
+
+/* ---------- Users: class album (DESIGN.md §4, Album Card) ----------
+   Polaroid-style cards, each slightly tilted (--tilt, set per card). They are tossed in once as they
+   come into view (at-toss) and straighten up under the pointer. */
+.toolbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.toolbar-right .filter { width: 300px; }
+.view-switch { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--panel); }
+.view-switch button {
+  min-height: 32px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.view-switch button:hover { color: var(--text); }
+.view-switch button[aria-pressed="true"] { background: var(--panel-2); color: var(--text); box-shadow: inset 0 -2px 0 var(--gold); }
+
+.album-band {
+  position: relative;
+  margin-top: 8px;
+  /* Its own stacking context: the cards' z-index (1, 2, 3 ... for the overlap order) only counts
+     inside the album, so no card ever rises above the sticky navbar. */
+  isolation: isolate;
+  z-index: 0;
+}
+.album-display {
+  /* The San Rita display line, in our voice: a huge Source Serif word drawn as a green outline,
+     with the photos tossed over its lower half. Decorative only. */
+  margin: 0 0 -0.42em;
+  font-family: var(--font-display);
+  font-size: clamp(84px, 15vw, 216px);
+  font-weight: 500;
+  line-height: 0.9;
+  letter-spacing: 0.01em;                   /* letters stand apart: no outline crosses another */
+  /* A clean outline: the stroke is painted first and twice as wide, then the solid fill on top.
+     The fill hides the inner half of the stroke and every contour that overlaps inside a letter
+     (the variable font has them), so only the outer 1.5px line shows. The fill is Midnight Ink
+     with 7 % Green Tint mixed in, opaque, so it also covers what lies behind. */
+  color: #142220;
+  -webkit-text-stroke: 3px rgba(108, 188, 166, 0.45);
+  paint-order: stroke fill;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+}
+.album {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 24px 28px 72px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 34px 14px;
+}
+.album-card {
+  /* --dx, --dy, --tilt and --z come from the view (a scatter by position, so neighbours differ) */
+  --x: var(--dx, 0px);
+  --y: var(--dy, 0px);
+  --rot: var(--tilt, 0deg);
+  position: relative;
+  z-index: var(--z, 1);
+  width: 104%;
+  margin-left: -2%;
+  transform: translate(var(--x), var(--y)) rotate(var(--rot));
+  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 18px 34px rgba(0, 0, 0, 0.28);  /* photos lying on a table */
+}
+.album .album-card.reveal { opacity: 0; transform: translate(var(--x), calc(var(--y) + 72px)) rotate(calc(var(--rot) * 2.2)) scale(0.92); }
+.album .album-card.reveal.is-visible {
+  opacity: 1;
+  transform: translate(var(--x), var(--y)) rotate(var(--rot));
+  animation: at-toss 760ms var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+@keyframes at-toss {
+  from { opacity: 0; transform: translate(var(--x), calc(var(--y) + 72px)) rotate(calc(var(--rot) * 2.2)) scale(0.92); }
+  55% { opacity: 1; }
+  to { opacity: 1; transform: translate(var(--x), var(--y)) rotate(var(--rot)); }
+}
+.album .album-card:hover, .album .album-card.reveal.is-visible:hover, .album .album-card:focus-within {
+  z-index: 1000;                           /* above every other card, still inside the album */
+  transform: translate(var(--x), calc(var(--y) - 8px)) rotate(0deg) scale(1.06);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), var(--shadow-float);
+}
+.album-photo { position: relative; display: block; aspect-ratio: 4 / 5; overflow: hidden; background: var(--panel); color: var(--text); }
+.album-photo:hover { color: var(--text); text-decoration: none; }
+.album-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(0.7) contrast(1.04) brightness(0.92);
+  transition: transform 700ms var(--ease-out), filter var(--dur-slow) var(--ease-out);
+}
+.album-photo::after {
+  /* Midnight Ink over the bottom half, so the mono caption reads on every picture */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(13, 22, 20, 0.35) 0%, rgba(13, 22, 20, 0) 26%),
+    linear-gradient(180deg, rgba(13, 22, 20, 0) 44%, rgba(13, 22, 20, 0.92) 100%);
+}
+.album-card:hover .album-photo img, .album-card:focus-within .album-photo img { transform: scale(1.06); filter: saturate(1) contrast(1.04) brightness(1); }
+.album-initials {
+  position: absolute;
+  left: 22px;
+  top: 12px;
+  z-index: 1;
+  font-family: var(--font-display);
+  font-size: 44px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #f1f4f2;
+}
+.album-tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(13, 22, 20, 0.62);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--gold-light);
+}
+.album-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 22px 16px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+.album-name { font-size: 13px; font-weight: 500; letter-spacing: 0.04em; line-height: 1.25; color: #f1f4f2; }
+.album-meta { font-size: 10px; letter-spacing: 0.06em; line-height: 1.35; color: var(--primary-light); }
+.album-mail { display: none; }
+.album-actions {
+  position: absolute;
+  right: 10px;
+  bottom: -18px;
+  z-index: 2;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+.album-card:hover .album-actions, .album-card:focus-within .album-actions { opacity: 1; transform: none; }
+.album-actions .btn-ghost { background: var(--panel-2); }
+.album-actions .btn-danger { background: #2a1714; }
+@media (hover: none) {
+  .album-actions { position: static; opacity: 1; transform: none; padding: 8px 0 0; display: flex; justify-content: flex-end; }
+}
+.album-empty { grid-column: 1 / -1; padding: 48px 16px; text-align: center; color: var(--muted); }
+@media (max-width: 720px) {
+  .toolbar-right, .toolbar-right .filter { width: 100%; }
+  .album-display { font-size: 25vw; }
+  .album { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 14px; padding: 12px 6px 40px; }
+  .album-card { --x: 0px; --y: calc(var(--dy, 0px) * 0.4); --rot: calc(var(--tilt, 0deg) * 0.5); width: 100%; margin-left: 0; }
+  .album-initials { font-size: 32px; left: 10px; }
+  .album-caption { padding: 0 10px 10px; }
+  .album-name { font-size: 11px; }
+}
+
 /* ---------- About page ---------- */
 .about-hero { padding: 16px 0 8px; }
 .about-hero h1 { font-size: clamp(36px, 5vw, 52px); font-weight: 500; letter-spacing: -0.02em; line-height: 1.08; }
@@ -602,12 +876,6 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 .timeline-item h4 { margin: 2px 0 4px; font-size: 16px; font-weight: 600; }
 .timeline-item p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
 
-/* ---------- Error pages ---------- */
-.error-head { display: flex; align-items: center; gap: 24px; margin-bottom: 28px; }
-.error-code { font-family: var(--font-display); font-size: 64px; font-weight: 500; line-height: 1; letter-spacing: -0.03em; }
-.error-head h1 { font-size: 26px; }
-.error-head .subtitle { margin: 6px 0 0; color: var(--muted); }
-.error-head .faculty-line { margin-top: 12px; }
 .section-links { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ---------- Motion (DESIGN.md §7) ---------- */
@@ -635,6 +903,8 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   }
   .reveal { opacity: 1; transform: none; }
   .stat:hover, .step:hover, .home-item:hover { transform: none; }
+  .album .album-card:hover, .album .album-card:focus-within { transform: translate(var(--x), var(--y)) rotate(var(--rot)); }
+  .album-card:hover .album-photo img { transform: none; }
 }
 
 /* ---------- Small screens ---------- */
@@ -648,6 +918,8 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   .nav-inner { flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 16px 6px; }
   .nav-links { justify-content: flex-start; padding-bottom: 2px; }
   .container { padding: 28px 16px 16px; }
+  .film-step { width: calc(100% - 32px); }
+  .film-text { font-size: 16px; }
   .form-grid, .grid-2 { grid-template-columns: 1fr; }
   .dl { grid-template-columns: 1fr; gap: 2px 0; }
   .dl dd { margin-bottom: 12px; }
@@ -656,11 +928,6 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
   .hero::before { background-size: 96px 96px, 24px 24px, 24px 24px; }
   .stat { padding: 18px; }
   .stat .num { font-size: 36px; }
-  .summary { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .summary-item { padding: 12px 14px; }
-  .summary-item .num { font-size: 26px; }
   .pipeline { grid-template-columns: repeat(2, 1fr); }
-  .error-head { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .profile { gap: 14px; }
   .avatar.lg { width: 52px; height: 52px; font-size: 17px; }
 }

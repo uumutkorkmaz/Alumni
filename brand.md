@@ -122,7 +122,7 @@ Badges always mean the same thing:
 3. **One gold element per screen.** Gold marks the single thing that matters most there; used twice it stops meaning anything.
 4. **Soft edges, no glow.** Borders are low contrast (1.35 : 1); no neon shadows, no glowing text.
 5. **Readable text blocks.** Body 15 px, line height 1.6, paragraphs at most about 72 characters wide.
-6. **Calm motion.** Things ease into place once and then stay still: colour changes 150 ms, hover lift 2 px at most, entrances under 1 second; respect `prefers-reduced-motion` (no movement at all when the user asks for it). The full motion system is in [DESIGN.md §7](DESIGN.md#7-motion--animation).
+6. **Calm motion.** Things ease into place once and then stay still: colour changes 150 ms, hover lift 2 px at most, entrances under 1 second; respect `prefers-reduced-motion` (no movement at all when the user asks for it). The one exception is the home page's scroll film (the walk from the main gate to the Rectorate), which moves only while the user scrolls, runs on desktops only, and becomes a still picture on phones and under reduced motion. The full motion system is in [DESIGN.md §7](DESIGN.md#7-motion--animation).
 7. **Every pair checked.** All text colours pass WCAG AA (4.5 : 1) on the surfaces they are used on (section 6).
 
 ## 6. Contrast table
@@ -194,8 +194,10 @@ Every page is built by `render_page` in `app/views/layout.py`: the same navbar, 
 | Alert | `.alert .alert-error` | Text `#f3d9d6` on `#2a1714`, border `--danger` at 40 %: a refused action at the top of the page, the reason in plain words. |
 | Card | `.card` | Groups one form, one detail or one list. A featured card may have the brand gradient as a 3 px top edge. |
 | Table | `.table-wrap` + `table` | Lists; a filter box above, the actions on the right of each row; a selected or hovered row gets a `--forest` tint. |
-| Pill | `.pill` | Small upper-case label above the home hero title, gold text with a gold hairline. |
-| Kicker | `.kicker` | Mono label above every other page title; gold only on edit pages (see DESIGN.md §4). |
+| Pill | `.pill` | Small upper-case label above the hero title of every page, gold text with a gold hairline. |
+| Page hero | `.hero.hero--page` / `.hero--compact` | The home hero on every other page: pill, serif title with one gold italic phrase, Faculty Line, lead, buttons; built by `page_hero()` in `layout.py` (see DESIGN.md §4). |
+| Album card | `.album-card` | One graduate on the Users page: a tilted, frameless campus photo with the initials, name, class and department on it, tossed among the others under a large outlined "Graduates" (see DESIGN.md §4). The pictures are campus places, never invented portraits. |
+| Kicker | `.kicker` | Small mono label with a green dot, used inside the home film captions. |
 | Focus | `:focus-visible` | 2 px `--primary` outline with 2 px offset on every interactive element. Never remove it. |
 
 ## 10. Voice and tone

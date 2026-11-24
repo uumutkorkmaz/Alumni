@@ -1,15 +1,19 @@
 from html import escape
 
+from datetime import date
+
 from app.views.layout import (
     back_link,
+    button,
     edit_header,
     filter_toolbar,
     form_card,
     new_button,
-    page_header,
+    page_hero,
     plural,
     render_page,
     row_actions,
+    stat_tiles,
 )
 
 ACTIVE = "/announcements"
@@ -38,8 +42,23 @@ def render_announcement_list(announcements: list[dict]) -> str:
         '<tr><td class="empty" colspan="5">No announcements yet. Publish the first one below.</td></tr>'
     )
 
+    this_year = str(date.today().year)
+    latest = max((a["created_at"] for a in announcements), default="")
+    stats = stat_tiles([
+        ("Announcements", len(announcements), "", ""),
+        (f"In {this_year}", sum(1 for a in announcements if a["created_at"].startswith(this_year)), "", ""),
+        ("Authors", len({a["author"] for a in announcements}), "", ""),
+        ("Latest", latest[:10] or "&ndash;", "", ""),
+    ], "Announcements in numbers")
+
     body = f"""
-    {page_header("Announcements", "News and notices for graduates.", new_button("New announcement"), kicker="Notice board", line=True)}
+    {page_hero(
+        "Notice board",
+        "News for <em>graduates</em>",
+        "Announcements from the department and the faculty: news, events and notices for MIS graduates.",
+        new_button("New announcement") + button("Job postings", "/job-postings"),
+    )}
+    {stats}
     {filter_toolbar("announcements-table", plural(len(announcements), "announcement"))}
     <div class="table-wrap" data-reveal>
       <table id="announcements-table">
@@ -56,19 +75,16 @@ def render_announcement_list(announcements: list[dict]) -> str:
 def render_announcement_detail(announcement: dict) -> str:
     a = announcement
     body = f"""
-    <header class="article-head">
-      <span class="kicker">Announcement #{a['id']}</span>
-      <h1>{escape(a['title'])}</h1>
-      <p class="meta"><span>By {escape(a['author'])}</span><span class="mono">{a['created_at']}</span></p>
-      <span class="faculty-line" aria-hidden="true"></span>
-    </header>
-    <article class="card" data-reveal>
+    {page_hero(
+        f"Announcement #{a['id']}",
+        escape(a['title']),
+        "",
+        button("Edit", f"/announcements/{a['id']}/edit", "primary") + button("All announcements", "/announcements"),
+        meta=f'<span>By {escape(a["author"])}</span><span class="mono">{a["created_at"]}</span>',
+        size="compact",
+    )}
+    <article class="card card-featured" data-reveal>
       <p class="content prose">{escape(a['content'])}</p>
-      <hr class="divider" />
-      <div class="detail-actions" style="margin-top: 0">
-        <a class="btn btn-primary" href="/announcements/{a['id']}/edit">Edit</a>
-        <a class="btn btn-ghost" href="/announcements">All announcements</a>
-      </div>
     </article>
     {back_link("/announcements", "Back to announcements")}
     """

@@ -1,7 +1,20 @@
 from html import escape
 
 from app.views.job_posting_view import is_open
-from app.views.layout import alert, delete_form, filter_toolbar, form_card, initials, new_button, page_header, plural, render_page
+from app.views.layout import (
+    alert,
+    button,
+    delete_form,
+    filter_toolbar,
+    form_card,
+    initials,
+    new_button,
+    page_hero,
+    plural,
+    render_page,
+    section_head,
+    stat_tiles,
+)
 
 ACTIVE = "/applications"
 DASH = '<span class="muted">-</span>'
@@ -89,9 +102,24 @@ def render_application_list(
         <div class="form-actions"><button type="submit" class="btn btn-primary">Send application</button></div>
       </form>"""
 
+    status_of = [a["status"] for a in applications]
+    stats = stat_tiles([
+        ("Applications", len(applications), "", ""),
+        ("In progress", sum(1 for s in status_of if s in ("submitted", "under_review")), "", "submitted or under review"),
+        ("Interviews", status_of.count("interview"), "", ""),
+        ("Accepted", status_of.count("accepted"), "", ""),
+    ], "Applications in numbers")
+
     body = f"""
+    {page_hero(
+        "Pipeline &middot; Applications",
+        "Applications, <em>step by step</em>",
+        "Who applied to which job posting, and where each application stands: from submitted to the final answer.",
+        new_button("New application") + button("Job postings", "/job-postings"),
+    )}
     {alert(error)}
-    {page_header("Applications", "Who applied to which job posting, and where each application stands.", new_button("New application"), kicker="Pipeline · Applications", line=True)}
+    {stats}
+    {section_head("By status", "Six stages")}
     {_pipeline(applications)}
     {filter_toolbar("applications-table", plural(len(applications), "application"))}
     <div class="table-wrap" data-reveal>

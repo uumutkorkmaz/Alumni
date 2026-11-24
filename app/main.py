@@ -1,3 +1,4 @@
+import mimetypes
 import os
 from pathlib import Path
 
@@ -35,6 +36,8 @@ if os.environ.get("DEBUG_ROUTES") == "1":
         raise RuntimeError("Test error raised on purpose by /api/debug/error")
 
 APP_DIR = Path(__file__).parent
+# The slim Python image does not know .webp; the home film's frames must be served as images.
+mimetypes.add_type("image/webp", ".webp")
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 
 # The about template is a page body only; render_page adds the shared navbar, stylesheet and footer.
@@ -72,7 +75,7 @@ def read_root():
 
 @app.get("/about", response_class=HTMLResponse)
 def read_about():
-    return render_page("About", ABOUT_BODY, "/about", narrow=True, lang="tr")
+    return render_page("About", ABOUT_BODY, "/about", lang="tr")
 
 
 @app.get("/404", response_class=HTMLResponse, include_in_schema=False)

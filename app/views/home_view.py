@@ -9,6 +9,10 @@ EMPLOYMENT_TYPES_TR = {
     "contract": "Sözleşmeli",
 }
 
+# Two sets of the same 160 frames: frames/1080/ (1920x1080) for large or sharp screens, frames/720/
+# (1280x720) for the rest. The page script picks one by the canvas size in device pixels.
+FILM_FRAMES = 160  # f001.webp ... f160.webp in each set
+
 DB_DOWN = '<p class="muted home-empty">Veriler şu an yüklenemiyor: veritabanına ulaşılamıyor.</p>'
 
 
@@ -76,23 +80,55 @@ def render_home(data: dict | None) -> str:
     postings = data["postings"] if data else None
     announcements = data["announcements"] if data else None
 
-    body = f"""
-  <section class="hero">
-    <span class="pill">İstanbul Üniversitesi &middot; İktisat Fakültesi &middot; YBS</span>
-    <h1>Mezunlar, iş ilanları ve başvurular <em>tek yerde</em></h1>
-    <span class="faculty-line" aria-hidden="true"></span>
-    <p class="lead">
-      Alumni Tracking System, Yönetim Bilişim Sistemleri mezunlarını kaydeder,
-      bölüm duyurularını ve mezunların paylaştığı iş ilanlarını yayınlar,
-      başvuruları baştan sona takip eder.
-    </p>
-    <div class="cta">
-      <a class="btn btn-primary" href="/job-postings">Açık ilanları gör <span class="arrow" aria-hidden="true">&rarr;</span></a>
-      <a class="btn btn-ghost" href="/users">Mezunlar</a>
-      <a class="btn btn-ghost" href="/announcements">Duyurular</a>
+    # The scroll film (DESIGN.md §7): the campus walk from Beyazıt Square through the main gate to the
+    # Rectorate plays forward as the page is scrolled, drawn frame by frame on a canvas (160 WebP frames).
+    # Desktop only: on small screens, without JavaScript or under reduced motion it is a still picture
+    # (the first frame) with the first caption.
+    film = f"""
+  <section class="film" data-film data-frames="{FILM_FRAMES}" data-src="/static/film/frames/{{set}}/f{{n}}.webp"
+           aria-label="İstanbul Üniversitesi: ana kapıdan Rektörlüğe">
+    <div class="film-stage">
+      <img class="film-poster" src="/static/film/frames/720/f001.webp"
+           srcset="/static/film/frames/720/f001.webp 1280w, /static/film/frames/1080/f001.webp 1920w"
+           sizes="100vw" alt="" />
+      <canvas class="film-canvas" aria-hidden="true"></canvas>
+      <div class="film-shade" aria-hidden="true"></div>
+
+      <div class="film-step hero is-active" data-from="0" data-to="0.3">
+        <span class="pill">İstanbul Üniversitesi &middot; İktisat Fakültesi &middot; YBS</span>
+        <h1>Mezunlar, iş ilanları ve başvurular <em>tek yerde</em></h1>
+        <span class="faculty-line" aria-hidden="true"></span>
+        <p class="lead">
+          Alumni Tracking System, Yönetim Bilişim Sistemleri mezunlarını kaydeder,
+          bölüm duyurularını ve mezunların paylaştığı iş ilanlarını yayınlar,
+          başvuruları baştan sona takip eder.
+        </p>
+        <div class="cta">
+          <a class="btn btn-primary" href="/job-postings">Açık ilanları gör <span class="arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-ghost" href="/users">Mezunlar</a>
+          <a class="btn btn-ghost" href="/announcements">Duyurular</a>
+        </div>
+        <span class="film-cue" aria-hidden="true">Kaydırın: kapıdan içeri girin</span>
+      </div>
+
+      <div class="film-step" data-from="0.36" data-to="0.66" aria-hidden="true">
+        <span class="kicker">Beyazıt &middot; Ana kapı</span>
+        <p class="film-title">Her mezun bir gün bu kapıdan geçti.</p>
+        <p class="film-text">Mezuniyetten sonra da aynı ağın parçası: bölüm, duyurular ve fırsatlar burada.</p>
+      </div>
+
+      <div class="film-step" data-from="0.74" data-to="1.01" aria-hidden="true">
+        <span class="kicker">Rektörlük</span>
+        <p class="film-title">Ağ burada büyüyor.</p>
+        <p class="film-text">Aşağıda: mezun sayıları, açık iş ilanları ve son duyurular.</p>
+      </div>
+
+      <div class="film-progress" aria-hidden="true"><span></span></div>
     </div>
   </section>
+"""
 
+    body = f"""
   {_stats(counts)}
 
   <section class="home-grid">
@@ -142,4 +178,4 @@ def render_home(data: dict | None) -> str:
     <a href="/about">Proje hakkında</a>
   </p>
 """
-    return render_page("Home", body, "/", lang="tr")
+    return render_page("Home", body, "/", lang="tr", full_width=film)

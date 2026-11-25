@@ -27,7 +27,7 @@ PUBLIC_EXACT = {
     "/api/health", "/api/login", "/api/logout", "/api/register",
     "/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json", "/api/swagger", "/hello", "/api/debug/error",
 }
-PUBLIC_PREFIXES = ("/static/", "/hello/", "/sum/")
+PUBLIC_PREFIXES = ("/static/", "/hello/", "/sum/", "/dev-login/", "/lang/")  # dev-login exists only with DEV_LOGIN=1
 
 ANY = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 EDITORS = ("academic", "staff", "admin")
@@ -74,11 +74,11 @@ def roles(*allowed: str) -> Check:
 
 def edit_user(user: dict, m: re.Match) -> str | None:
     target = int(m.group(1))
-    if user["id"] == target or user["role"] == "admin":
+    if user["role"] == "admin":
         return None
     if user["role"] == "staff" and _user_role(target) in ("student", "alumni", None):
         return None
-    return "the user themself, staff (students and graduates only) or an admin"
+    return "staff (students and graduates only) or an admin; you change your own career profile on /me/profile"
 
 
 def announcement_owner(user: dict, m: re.Match) -> str | None:
@@ -125,6 +125,10 @@ def application_status(group: int) -> Check:
 
 RULES: list[tuple[set[str], re.Pattern, Check]] = [
     (ANY, re.compile(r"^/(api/)?admin(/|$)"), roles("admin")),
+    # the person's own pages (ddd.md 4.1.6): every /me page needs signing in; some parts need a role
+    (ANY, re.compile(r"^/(api/)?me/(applications|saved|cv)(/|$)"), roles(*APPLICANTS)),
+    (ANY, re.compile(r"^/(api/)?me/(postings|received)(/|$)"), roles(*POSTERS)),
+    (ANY, re.compile(r"^/(api/)?me/announcements(/|$)"), roles(*EDITORS)),
     # users
     ({"POST"}, re.compile(r"^/(api/)?users/?$"), roles(*MANAGERS)),
     ({"POST"}, re.compile(r"^/users/(\d+)/delete$"), roles("admin")),

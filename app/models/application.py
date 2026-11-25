@@ -38,6 +38,8 @@ class Application(Base):
     )
     status: Mapped[str] = mapped_column(String(20), server_default="submitted")
     cover_letter: Mapped[str | None] = mapped_column(Text())
+    # The CV sent with the application (ddd.md 4.1.7); it stays even when the person uploads a newer one.
+    cv_file_id: Mapped[int | None] = mapped_column(ForeignKey("cv_files.id", name="fk_applications_cv_file_id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(), server_default=text("CURRENT_TIMESTAMP"))
 
@@ -50,9 +52,10 @@ class Application(Base):
 
 
 class ApplicationCreate(BaseModel):
-    """Direct routes: both sides of the application are in the body."""
+    """Direct routes: the posting is in the body. The applicant is always the signed-in user
+    (ddd.md 4.1.3); a user_id in the body is accepted for older clients and ignored."""
 
-    user_id: int
+    user_id: int | None = None
     job_posting_id: int
     cover_letter: str | None = None
 
@@ -67,7 +70,7 @@ class UserApplicationCreate(BaseModel):
 class PostingApplicationCreate(BaseModel):
     """Nested under a posting: the posting is in the path, the applicant is in the body."""
 
-    user_id: int
+    user_id: int | None = None  # ignored: the applicant is the signed-in user
     cover_letter: str | None = None
 
 
@@ -83,6 +86,7 @@ def _to_dict(application: Application) -> dict:
         "job_posting_id": application.job_posting_id,
         "status": application.status,
         "cover_letter": application.cover_letter,
+        "cv_file_id": application.cv_file_id,
         "created_at": application.created_at.strftime("%Y-%m-%d %H:%M"),
     }
 
@@ -117,7 +121,7 @@ def _find(session: Session, application_id: int, user_id: int | None, job_postin
     return application
 
 
-def create_application(user_id: int, job_posting_id: int, cover_letter: str | None) -> dict:
+def create_application(user_id: int, job_posting_id: int, cover_letter: str | None, cv_file_id: int | None = None) -> dict:
     with Session(get_engine()) as session:
         _require_user(session, user_id)
         # Only students and graduates apply (ddd.md section 4.1.1).
@@ -125,7 +129,7 @@ def create_application(user_id: int, job_posting_id: int, cover_letter: str | No
         posting = _require_posting(session, job_posting_id)
         if not posting.is_active or (posting.deadline is not None and posting.deadline < date.today()):
             raise HTTPException(status_code=409, detail="This job posting is closed")
-        application = Application(user_id=user_id, job_posting_id=job_posting_id, cover_letter=cover_letter)
+        application = Application(user_id=user_id, job_posting_id=job_posting_id, cover_letter=cover_letter, cv_file_id=cv_file_id)
         session.add(application)
         try:
             session.commit()

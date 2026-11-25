@@ -14,9 +14,12 @@ class RegisterController:
         self.router.add_api_route("", self.create, methods=["POST"])
         self.router.add_api_route("/done", self.done, methods=["GET"])
 
-    def form(self, role: str = "") -> HTMLResponse:
-        """GET /register: the empty form (?role=student preselects a role card)."""
+    def form(self, role: str = "", email: str = "") -> HTMLResponse:
+        """GET /register: the empty form (?role=student preselects a role card; ?email= fills the email,
+        used by the "apply again" button after a rejection)."""
         values = {"role": role} if role in registration_model.REGISTER_ROLES else {}
+        if email and len(email) <= 255:
+            values["email"] = email
         return HTMLResponse(render_register_page(values, {}))
 
     def create(
@@ -51,10 +54,11 @@ class RegisterController:
         if not errors:
             account, errors = registration_model.register(clean, file)
             if account:
-                return RedirectResponse(url="/register/done", status_code=303)
+                count = account.get("application_count", 1)
+                return RedirectResponse(url="/register/done" + (f"?n={count}" if count > 1 else ""), status_code=303)
         # Show the form again: what was typed stays, the passwords and the file do not.
         kept = {k: v for k, v in form.items() if k not in ("password", "password_confirm")}
         return HTMLResponse(render_register_page(kept, registration_model.messages(errors)), status_code=422)
 
-    def done(self) -> HTMLResponse:
-        return HTMLResponse(render_register_done())
+    def done(self, n: int = 1) -> HTMLResponse:
+        return HTMLResponse(render_register_done(max(1, min(n, registration_model.MAX_APPLICATIONS))))

@@ -78,7 +78,9 @@ def can_edit_user(target: dict) -> bool:
     user = me()
     if not user:
         return False
-    return user["id"] == target["id"] or is_admin(user) or (
+    # Not the user themself: name, year and department were checked at registration (ddd.md 4.1.6);
+    # people change their career profile on /me/profile.
+    return is_admin(user) or (
         user["role"] == "staff" and target["role"] in ("student", "alumni")
     )
 

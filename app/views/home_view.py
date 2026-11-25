@@ -33,10 +33,10 @@ def _stats(counts: dict | None) -> str:
     open_note = f"{counts['open_job_postings']} tanesi açık" if counts else ""
     return f"""
   <section class="stats" aria-label="Site özeti">
-    {_stat("/users", n("users"), "Mezun")}
-    {_stat("/job-postings", n("job_postings"), "İş ilanı", open_note)}
-    {_stat("/applications", n("applications"), "Başvuru")}
-    {_stat("/announcements", n("announcements"), "Duyuru")}
+    {_stat("/users", n("users"), "Mezunlar")}
+    {_stat("/job-postings", n("job_postings"), "İş ilanları", open_note)}
+    {_stat("/applications", n("applications"), "Başvurular")}
+    {_stat("/announcements", n("announcements"), "Duyurular")}
   </section>"""
 
 

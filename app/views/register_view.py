@@ -1,5 +1,6 @@
 """The registration pages (ddd.md 4.1.2). Public pages, so in Turkish (brand.md, Voice)."""
 from html import escape
+from urllib.parse import quote
 
 from app.models.registration import ACADEMIC_TITLES, DOCUMENTS, STAFF_EMAIL_DOMAIN, STUDENT_EMAIL_DOMAIN
 from app.views.layout import button, page_hero, render_page
@@ -83,7 +84,7 @@ def render_register_page(values: dict, errors: dict) -> str:
 
     form = f"""
     <form class="register-form" method="post" action="/register" enctype="multipart/form-data" novalidate
-          data-register data-email-hints='{escape(str(EMAIL_HINTS).replace("'", '"'))}'>
+          data-register{"".join(f' data-t-email-{r}="{escape(h)}"' for r, h in EMAIL_HINTS.items())}>
       {summary}
       <fieldset class="role-picker">
         <legend>Kim olarak kayıt oluyorsun?</legend>
@@ -95,7 +96,7 @@ def render_register_page(values: dict, errors: dict) -> str:
         {_field("name", "Ad soyad", _input("name", values, errors, maxlength=100, autocomplete="name", required="required"), errors)}
         {_field("email", "E-posta", _input("email", values, errors, "email", maxlength=255, autocomplete="email", required="required", placeholder="ornek@gmail.com"), errors,
                 hint="Rolüne göre: öğrenciler öğrenci e-postası, personel kurumsal e-posta kullanır.")}
-        {_field("password", "Şifre", '<div class="password-wrap">' + _input("password", values, errors, "password", minlength=8, maxlength=128, autocomplete="new-password", required="required") + '<button type="button" class="btn btn-ghost btn-sm" data-show-password aria-label="Şifreyi göster">Göster</button></div><div class="strength" aria-hidden="true"><span></span></div>', errors,
+        {_field("password", "Şifre", '<div class="password-wrap">' + _input("password", values, errors, "password", minlength=8, maxlength=128, autocomplete="new-password", required="required") + '<button type="button" class="btn btn-ghost btn-sm" data-show-password aria-label="Şifreyi göster" data-t-show="Göster" data-t-hide="Gizle" data-t-show-label="Şifreyi göster" data-t-hide-label="Şifreyi gizle">Göster</button></div><div class="strength" aria-hidden="true"><span></span></div>', errors,
                 hint="En az 8 karakter; en az bir harf ve bir rakam.")}
         {_field("password_confirm", "Şifre tekrar", _input("password_confirm", values, errors, "password", maxlength=128, autocomplete="new-password", required="required"), errors)}
         {_field("department", "Bölüm", _input("department", values, errors, maxlength=100, list="departments", required="required"), errors,
@@ -111,7 +112,8 @@ def render_register_page(values: dict, errors: dict) -> str:
 
       <div class="field full{' has-error' if 'document' in errors else ''}">
         <span class="label-like">Belge</span>
-        <label class="dropzone" for="document" data-dropzone{doc_hints}>
+        <label class="dropzone" for="document" data-dropzone{doc_hints}
+               data-t-empty="Belgeni seç ya da buraya sürükle" data-t-types="PDF, JPG ya da PNG · en fazla 5 MB">
           <input id="document" name="document" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required />
           <span class="dropzone-title" data-file-name>Belgeni seç ya da buraya sürükle</span>
           <span class="dropzone-sub" data-doc-hint>PDF, JPG ya da PNG &middot; en fazla 5 MB</span>
@@ -171,12 +173,59 @@ def render_register_page(values: dict, errors: dict) -> str:
     return render_page("Kayıt ol", body, ACTIVE, lang="tr")
 
 
-def render_register_done() -> str:
+def render_application_status(info: dict) -> str:
+    """What a pending or rejected person sees after signing in with the right password (ddd.md 4.1.2):
+    the same steps as after registering, with where their application stands. No session is opened."""
+    name = escape(info["name"].split()[0] if info["name"].split() else info["name"])
+    sent = f'<li><span class="step-num">&#10003;</span><div><b>Kayıt ve belge alındı.</b><p>Başvuru tarihi {info["sent_at"]} &middot; {info["application_count"]}. başvuru.</p></div></li>'
+    if info["status"] == "pending":
+        pill, title = "Başvuru durumu · İnceleniyor", f"Merhaba {name}, başvurun <em>inceleniyor</em>"
+        lead = "Hesabın henüz açılmadı. Yönetici belgeni bilgilerinle karşılaştırıyor; sonuç çıkınca buradan görebilirsin."
+        steps = (
+            sent
+            + '<li class="is-current"><span class="step-num">2</span><div><b>Yönetici belgeni inceliyor.</b>'
+              '<p>Onaylanınca hesabın aktif olur; reddedilirse nedeni burada yazılır.</p></div></li>'
+            + '<li><span class="step-num">3</span><div><b>Giriş.</b><p>Onaydan sonra aynı e-posta ve şifreyle giriş yapabilirsin.</p></div></li>'
+        )
+        actions = button("Ana sayfa", "/", "primary", arrow=True) + button("İş ilanlarına göz at", "/job-postings")
+    else:
+        pill, title = "Başvuru durumu · Reddedildi", f"Merhaba {name}, başvurun <em>reddedildi</em>"
+        if info["left"]:
+            lead = (f"Bilgilerini ya da belgeni düzeltip yeniden başvurabilirsin: {info['left']} hakkın kaldı. "
+                    f"Yeniden başvurmazsan kaydın {info['keep_days']} gün sonra silinir.")
+            again = button("Bilgilerini düzeltip yeniden başvur", f"/register?email={quote(info['email'])}&role={info['role']}", "primary", arrow=True)
+            last = ('<li><span class="step-num">3</span><div><b>Yeniden başvur.</b>'
+                    f'<p>Aynı e-postayla formu yeniden doldur; başvurun tekrar incelemeye girer ({info["max"]} başvuru hakkın var).</p></div></li>')
+        else:
+            lead = (f"{info['max']} başvuru hakkının hepsi kullanıldı; bu e-postayla yeniden başvurulamaz. "
+                    "Bir hata olduğunu düşünüyorsan bölümle iletişime geç.")
+            again = ""
+            last = ""
+        steps = (
+            sent
+            + '<li class="is-rejected"><span class="step-num">&#10005;</span><div><b>Başvurun reddedildi.</b>'
+              f'<p class="reject-reason"><span>Neden</span>{escape(info["rejection_reason"] or "-")}</p>'
+              + (f'<p class="muted">Karar tarihi {info["reviewed_at"]}</p>' if info["reviewed_at"] else "")
+            + "</div></li>" + last
+        )
+        actions = again + button("Ana sayfa", "/")
+    body = f"""
+    {page_hero(pill, title, lead, actions, size="compact")}
+    <section class="card" data-reveal>
+      <ol class="mini-steps status-steps">{steps}</ol>
+    </section>
+    <p class="switch-auth">Başka bir hesapla mı? <a href="/login">Giriş yap</a></p>
+    """
+    return render_page("Başvuru durumu", body, "/login", narrow=True, lang="tr")
+
+
+def render_register_done(count: int = 1) -> str:
+    again = f" Bu {count}. başvurun." if count > 1 else ""
     body = f"""
     {page_hero(
         "Başvuru alındı",
         "Başvurun <em>alındı</em>",
-        "Bilgilerin ve belgen yöneticiye ulaştı. Belgen incelenip onaylandığında hesabın açılacak.",
+        "Bilgilerin ve belgen yöneticiye ulaştı. Belgen incelenip onaylandığında hesabın açılacak." + again,
         button("Ana sayfa", "/", "primary", arrow=True) + button("İş ilanlarına göz at", "/job-postings"),
         size="compact",
     )}
@@ -199,7 +248,6 @@ REGISTER_SCRIPT = """
 (function () {
   var form = document.querySelector('[data-register]');
   if (!form) return;
-  var hints = JSON.parse(form.dataset.emailHints || '{}');
   var email = form.querySelector('#email');
   var drop = form.querySelector('[data-dropzone]');
   var docHint = form.querySelector('[data-doc-hint]');
@@ -219,9 +267,11 @@ REGISTER_SCRIPT = """
       if (!label.dataset.base) label.dataset.base = label.textContent;
       label.textContent = (role && field.dataset['label' + role.charAt(0).toUpperCase() + role.slice(1)]) || label.dataset.base;
     });
-    if (role && hints[role]) email.placeholder = hints[role];
-    if (role && drop.dataset['doc' + role.charAt(0).toUpperCase() + role.slice(1)]) {
-      docHint.textContent = drop.dataset['doc' + role.charAt(0).toUpperCase() + role.slice(1)] + ' \\u00b7 PDF, JPG ya da PNG \\u00b7 en fazla 5 MB';
+    // Texts come from data-t-* attributes, so they are already in the page's language (ddd.md 4.1.8).
+    var cap = role ? role.charAt(0).toUpperCase() + role.slice(1) : '';
+    if (role && form.dataset['tEmail' + cap]) email.placeholder = form.dataset['tEmail' + cap];
+    if (role && drop.dataset['doc' + cap]) {
+      docHint.textContent = drop.dataset['doc' + cap] + ' \\u00b7 ' + drop.dataset.tTypes;
     }
   }
   form.querySelectorAll('input[name="role"]').forEach(function (r) { r.addEventListener('change', applyRole); });
@@ -242,14 +292,14 @@ REGISTER_SCRIPT = """
   toggle.addEventListener('click', function () {
     var show = pw.type === 'password';
     pw.type = show ? 'text' : 'password';
-    toggle.textContent = show ? 'Gizle' : 'G\\u00f6ster';
-    toggle.setAttribute('aria-label', show ? '\\u015eifreyi gizle' : '\\u015eifreyi g\\u00f6ster');
+    toggle.textContent = show ? toggle.dataset.tHide : toggle.dataset.tShow;
+    toggle.setAttribute('aria-label', show ? toggle.dataset.tHideLabel : toggle.dataset.tShowLabel);
   });
 
   var file = form.querySelector('#document');
   var fileName = form.querySelector('[data-file-name]');
   file.addEventListener('change', function () {
-    fileName.textContent = file.files.length ? file.files[0].name : 'Belgeni se\\u00e7 ya da buraya s\\u00fcr\\u00fckle';
+    fileName.textContent = file.files.length ? file.files[0].name : drop.dataset.tEmpty;
     drop.classList.toggle('has-file', file.files.length > 0);
   });
   ['dragenter', 'dragover'].forEach(function (e) { drop.addEventListener(e, function () { drop.classList.add('is-over'); }); });

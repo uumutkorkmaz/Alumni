@@ -58,6 +58,14 @@ MESSAGES = {
         f"Academic and administrative staff register with their @{STAFF_EMAIL_DOMAIN} address.",
     ),
     "email_taken": ("Bu e-posta ile bir hesap zaten var.", "An account with this email already exists."),
+    "reapply_limit": (
+        "Bu e-postayla 3 kez başvuruldu ve başvuruların hepsi reddedildi; yeniden başvurulamaz. Bölümle iletişime geçin.",
+        "This email was used for 3 applications and all were rejected, so it cannot apply again. Contact the department.",
+    ),
+    "reapply_pending": (
+        "Bu e-postayla bir başvuru zaten inceleniyor. Sonucu bekleyin.",
+        "An application with this email is already being reviewed. Wait for the answer.",
+    ),
     "password_weak": (
         "Şifre en az 8 karakter olmalı ve en az bir harf ile bir rakam içermeli.",
         "The password needs at least 8 characters, with a letter and a digit.",
@@ -236,28 +244,65 @@ def read_document(stream, filename: str | None) -> tuple[dict | None, str | None
 
 
 # --------------------------------------------------------------------------- register
-def _taken(conn, clean: dict) -> dict[str, str]:
+# A rejected person may correct their details and apply again, at most MAX_APPLICATIONS times in all;
+# a rejected account that does not apply again is deleted after REJECTED_KEEP_DAYS (ddd.md 4.1.2).
+MAX_APPLICATIONS = 3
+REJECTED_KEEP_DAYS = 30
+
+
+def _existing(conn, email: str):
+    return conn.execute(
+        text("SELECT id, status, application_count FROM users WHERE lower(email) = :e"), {"e": email}
+    ).mappings().first()
+
+
+def _taken(conn, clean: dict, reapplying_id: int | None = None) -> dict[str, str]:
     errors = {}
-    if conn.execute(text("SELECT 1 FROM users WHERE lower(email) = :e"), {"e": clean["email"]}).first():
-        errors["email"] = "email_taken"
+    if reapplying_id is None:
+        found = _existing(conn, clean["email"])
+        if found is not None:
+            if found["status"] == "rejected" and found["application_count"] >= MAX_APPLICATIONS:
+                errors["email"] = "reapply_limit"
+            elif found["status"] == "pending":
+                errors["email"] = "reapply_pending"
+            elif found["status"] != "rejected":
+                errors["email"] = "email_taken"
     if clean["student_number"] and conn.execute(
-        text("SELECT 1 FROM users WHERE student_number = :n"), {"n": clean["student_number"]}
+        text("SELECT 1 FROM users WHERE student_number = :n AND id IS DISTINCT FROM :me"),
+        {"n": clean["student_number"], "me": reapplying_id},
     ).first():
         errors["student_number"] = "student_number_taken"
     return errors
 
 
-def register(clean: dict, document: dict) -> tuple[dict | None, dict[str, str]]:
-    """Create a pending account and its document. Returns (account, {}) or (None, {field: code})."""
-    with get_engine().connect() as conn:
-        errors = _taken(conn, clean)
-    if errors:
-        return None, errors
-
+def _store(document: dict) -> tuple[str, Path]:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     stored_name = f"{uuid.uuid4().hex}.{document['ext']}"
     path = UPLOAD_DIR / stored_name
     path.write_bytes(document["content"])
+    return stored_name, path
+
+
+def register(clean: dict, document: dict) -> tuple[dict | None, dict[str, str]]:
+    """Create a pending account and its document, or, for an email whose registration was rejected
+    and that has applications left, apply again with the corrected details. Returns (account, {})
+    or (None, {field: code}); the account has `application_count` (1 for a first application)."""
+    purge_rejected()  # an expired rejection frees its email first
+    with get_engine().connect() as conn:
+        found = _existing(conn, clean["email"])
+        reapplying = found["id"] if found is not None and found["status"] == "rejected" else None
+        errors = _taken(conn, clean)  # the email: taken, under review, or out of applications
+        errors.pop("student_number", None)
+        errors.update({k: v for k, v in _taken(conn, clean, reapplying_id=reapplying or 0).items()
+                       if k == "student_number"})  # the number: not someone else's (the person's own is fine)
+        if "email" in errors:  # the same person: the email message says it all
+            errors.pop("student_number", None)
+        if not errors and reapplying is not None:
+            return _reapply(reapplying, clean, document)
+    if errors:
+        return None, errors
+
+    stored_name, path = _store(document)
     try:
         with get_engine().begin() as conn:
             user = conn.execute(
@@ -290,7 +335,108 @@ def register(clean: dict, document: dict) -> tuple[dict | None, dict[str, str]]:
         raise
     account = dict(user)
     account["created_at"] = account["created_at"].strftime("%Y-%m-%d %H:%M")
+    account["application_count"] = 1
     return account, {}
+
+
+def _reapply(user_id: int, clean: dict, document: dict) -> tuple[dict | None, dict[str, str]]:
+    """The same account again, with the new details and document: pending, the old reason cleared."""
+    stored_name, path = _store(document)
+    try:
+        with get_engine().begin() as conn:
+            user = conn.execute(
+                text(
+                    "UPDATE users SET name = :name, role = :role, status = 'pending', graduation_year = :graduation_year, "
+                    "department = :department, student_number = :student_number, title = :title, position = :position, "
+                    "password_hash = :password_hash, consent_at = CURRENT_TIMESTAMP, rejection_reason = NULL, "
+                    "reviewed_at = NULL, reviewed_by_user_id = NULL, application_count = application_count + 1, "
+                    "updated_at = CURRENT_TIMESTAMP "
+                    "WHERE id = :id AND status = 'rejected' AND application_count < :max "
+                    "RETURNING id, name, email, role, status, graduation_year, department, "
+                    "student_number, title, position, created_at, application_count"
+                ),
+                {**{k: v for k, v in clean.items() if k not in ("password", "email")},
+                 "password_hash": hash_password(clean["password"]), "id": user_id, "max": MAX_APPLICATIONS},
+            ).mappings().first()
+            if user is None:  # decided or deleted in the meantime
+                raise IntegrityError("reapply", {}, Exception("state changed"))
+            conn.execute(text("DELETE FROM registration_documents WHERE user_id = :id"), {"id": user_id})
+            conn.execute(
+                text(
+                    "INSERT INTO registration_documents (user_id, original_name, stored_name, content_type, size_bytes) "
+                    "VALUES (:user_id, :original_name, :stored_name, :content_type, :size)"
+                ),
+                {"user_id": user_id, "original_name": document["original_name"],
+                 "stored_name": stored_name, "content_type": document["content_type"], "size": document["size"]},
+            )
+    except IntegrityError:
+        path.unlink(missing_ok=True)
+        with get_engine().connect() as conn:
+            return None, _taken(conn, clean, reapplying_id=user_id) or {"email": "email_taken"}
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    account = dict(user)
+    account["created_at"] = account["created_at"].strftime("%Y-%m-%d %H:%M")
+    return account, {}
+
+
+# --------------------------------------------------------------------------- rejected accounts
+def rejected_registrations() -> list[dict]:
+    """Rejected accounts, newest decision first, with how many days are left before they are deleted."""
+    with get_engine().connect() as conn:
+        rows = conn.execute(text(
+            "SELECT id, name, email, role, rejection_reason, application_count, reviewed_at, "
+            "GREATEST(0, CEIL(EXTRACT(EPOCH FROM (reviewed_at + make_interval(days => :keep) - CURRENT_TIMESTAMP)) / 86400))::int AS days_left "
+            "FROM users WHERE status = 'rejected' ORDER BY reviewed_at DESC NULLS LAST, id DESC"
+        ), {"keep": REJECTED_KEEP_DAYS}).mappings().all()
+    return [{**r, "reviewed_at": r["reviewed_at"].strftime("%Y-%m-%d %H:%M") if r["reviewed_at"] else ""} for r in rows]
+
+
+def purge_rejected() -> int:
+    """Delete the rejected accounts whose decision is older than REJECTED_KEEP_DAYS and that did not apply
+    again (personal data is not kept longer than needed). Each one is written to the audit log."""
+    with get_engine().begin() as conn:
+        gone = conn.execute(text(
+            "DELETE FROM users WHERE status = 'rejected' "
+            "AND reviewed_at < CURRENT_TIMESTAMP - make_interval(days => :keep) RETURNING id, name, email"
+        ), {"keep": REJECTED_KEEP_DAYS}).mappings().all()
+        for g in gone:
+            conn.execute(text(
+                "INSERT INTO admin_audit (admin_user_id, admin_name, action, target_type, target_id, details) "
+                "VALUES (NULL, 'System', 'rejected_purged', 'user', :id, :d)"
+            ), {"id": g["id"], "d": f"{g['name']} <{g['email']}>, rejected more than {REJECTED_KEEP_DAYS} days ago"[:300]})
+    return len(gone)
+
+
+def application_status(email: str) -> dict | None:
+    """For the status page a pending or rejected person sees after signing in with the right password."""
+    with get_engine().connect() as conn:
+        row = conn.execute(text(
+            "SELECT name, email, role, status, rejection_reason, application_count, consent_at, created_at, reviewed_at "
+            "FROM users WHERE lower(email) = :e AND status IN ('pending', 'rejected')"
+        ), {"e": (email or "").strip().lower()}).mappings().first()
+    if row is None:
+        return None
+    info = dict(row)
+    sent = info["consent_at"] or info["created_at"]
+    info["sent_at"] = sent.strftime("%Y-%m-%d %H:%M")
+    info["reviewed_at"] = info["reviewed_at"].strftime("%Y-%m-%d %H:%M") if info["reviewed_at"] else ""
+    info["left"] = max(0, MAX_APPLICATIONS - info["application_count"])
+    info["max"] = MAX_APPLICATIONS
+    info["keep_days"] = REJECTED_KEEP_DAYS
+    return info
+
+
+def rejection_info(email: str) -> dict | None:
+    """For the login page: the reason and how many applications are left, for a rejected account."""
+    with get_engine().connect() as conn:
+        row = conn.execute(text(
+            "SELECT rejection_reason, application_count FROM users WHERE lower(email) = :e AND status = 'rejected'"
+        ), {"e": (email or "").strip().lower()}).mappings().first()
+    if row is None:
+        return None
+    return {"reason": row["rejection_reason"], "left": max(0, MAX_APPLICATIONS - row["application_count"])}
 
 
 # --------------------------------------------------------------------------- review (admin)
@@ -339,6 +485,9 @@ def document_file(user_id: int) -> tuple[Path, str, str]:
 
 
 def _decide(user_id: int, status: str, reason: str | None) -> dict:
+    from app.auth import me
+
+    reviewer = me()
     with get_engine().begin() as conn:
         current = conn.execute(
             text("SELECT status FROM users WHERE id = :id FOR UPDATE"), {"id": user_id}
@@ -350,9 +499,9 @@ def _decide(user_id: int, status: str, reason: str | None) -> dict:
         conn.execute(
             text(
                 "UPDATE users SET status = :status, rejection_reason = :reason, reviewed_at = CURRENT_TIMESTAMP, "
-                "updated_at = CURRENT_TIMESTAMP WHERE id = :id"
+                "reviewed_by_user_id = :reviewer, updated_at = CURRENT_TIMESTAMP WHERE id = :id"
             ),
-            {"status": status, "reason": reason, "id": user_id},
+            {"status": status, "reason": reason, "id": user_id, "reviewer": reviewer["id"] if reviewer else None},
         )
         stored = conn.execute(
             text(

@@ -240,9 +240,8 @@ components:
   logo-mark:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.on-primary}"
-    typography: "{typography.button}"
     rounded: "{rounded.logo}"
-    size: 32px
+    size: 34px
   step-number:
     backgroundColor: "{colors.panel}"
     textColor: "{colors.gold}"
@@ -378,7 +377,7 @@ Rules:
 
 ### Navbar
 **Role:** the top bar of every page.
-64 px tall, sticky, `rgba(13,22,20,.82)` with an 12 px backdrop blur and a 1 px Hairline bottom rule. Left: the AT mark (32 px, İÜ Green, Midnight Ink letters, 1 px gold hairline at 45 %) and the wordmark "Alumni Tracking" in Inter 600 16 px with the endorsement line `İÜ · İKTİSAT · YBS` under it in IBM Plex Mono 10 px Archive Gray. Right: links in Inter 500 14 px Archive Gray; hover Paper Text; the active page Paper Text with a 2 px University Gold underline that slides in from the left (§7).
+64 px tall, sticky, `rgba(13,22,20,.82)` with an 12 px backdrop blur and a 1 px Hairline bottom rule. Left: the logo mark, *the gate and the cap* (34 px, `app/static/logo-mark.svg`: a Midnight Ink gateway and mortarboard on İÜ Green with a gold hairline edge, brand.md §3) and the wordmark "Alumni Tracking" in Inter 600 16 px with the endorsement line `İÜ · İKTİSAT · YBS` under it in IBM Plex Mono 10 px Archive Gray. Right: links in Inter 500 14 px Archive Gray; hover Paper Text; the active page Paper Text with a 2 px University Gold underline that slides in from the left (§7).
 
 ### Eyebrow
 **Role:** small label above a title that says where you are.
@@ -419,9 +418,38 @@ Inside a card-shaped wrapper (14 px radius, 1 px Hairline, scrolls sideways on s
 **Role:** a short state word.
 Fully round, 3 × 10 px padding, IBM Plex Mono badge size, colours from §2.4. Never more than two words.
 
+### Admin Panel
+**Role:** `/admin` (English, admins only; ddd.md 4.1.4).
+Compact Page Hero (`ADMIN PANEL`, one gold italic word per part) → two columns: a 180 px sticky menu card (Overview, Users, Registrations with a gold count of pending ones, Content, Sessions, Audit log; the current part on Raised Panel with a 2 px gold left edge) and the content. Every action answers with a one-line Alert at the top (green for done, red with the reason when refused). Overview: four Stat Tiles, "Active people by role" as thin Faculty Line bars with the count in serif, accounts by status, the latest actions. Tables keep their action buttons on one line in a column as wide as its content; the role is changed with a small select and Save; destructive actions ask first. Below 900 px the menu becomes a horizontal scrolling row.
+
+### My Account
+**Role:** `/me` (English, every signed-in person; ddd.md 4.1.6).
+The Admin Panel's frame reused: compact Page Hero (`MY ACCOUNT · <ROLE>` pill, "Hello, *first name*" on the overview) → a 180 px menu card whose top row is the person (avatar, name, "See my public profile") and whose parts depend on the role → the content, with the one-line Alert on top. The overview has Stat Tiles, a row of shortcut buttons, a profile-completeness card (a 6 px gold bar) and a list of open postings. The profile page stacks full-width cards of one style (no featured top line): read-only *Account details* as a grid of small fact tiles (mono label over the value, three per row, two on a phone), then the *Career profile* form in two columns, then the CV and *Your story*. Tables keep one-line actions; a cover letter is edited in place in a `details` row; the account-deletion card has a red-tinted border. A posting's hero gets a ghost **☆ Save / ★ Saved** button (gold when saved).
+
+### Tables on a Phone
+**Role:** every `.table-wrap` table below 700 px. Instead of scrolling sideways, each row becomes a small card: the head row is hidden and every cell shows its column name (mono 10 px, Archive Gray, taken from the table head by the page script) on the left of its value; the actions column runs full width under the row. An empty-table message stays centred.
+
+### Public Profile
+**Role:** `/users/{id}` (ddd.md 4.1.7), the way LinkedIn shows a person.
+A wide header card (Ledger Panel with a faint green-to-gold wash) holds a 112 px round avatar with a gold ring and the initials in Source Serif, the role pill, the name in serif 44 px, the headline in Inter 18 px and the city in Archive Gray, then the buttons (Edit my profile / LinkedIn / Email). Below, two columns: About (featured card), Experience, Education and Certificates as **timelines** (a 1 px Hairline rail with a hollow green dot per entry; title Inter 600, company, mono dates with the duration, description in Archive Gray; a "now" badge on a current job) and, on the side, the details card and *Activity*. Empty sections are hidden for others and show an "Add it" line to the owner. On a phone the header stacks and the avatar shrinks to 80 px.
+
+### Application Status Page
+**Role:** what a pending or rejected person sees after signing in (ddd.md 4.1.2), built like the page after registering.
+Compact hero (pill *Başvuru durumu · İnceleniyor / Reddedildi*, "Merhaba *Ad*, başvurun *inceleniyor / reddedildi*"), then one card of steps: done steps with a gold ✓, the current step framed in gold, a rejection framed in red with a ✕ and the reason in a quote block (mono "NEDEN" label, a red left edge). The main button is *Bilgilerini düzeltip yeniden başvur* while applications are left.
+
+### Checkbox
+Every checkbox in a `.check` label is drawn by the site: a 20 px box with 6 px corners on the field colour, a green fill and a white tick when checked, a green focus ring. The register page's consent sits in its own framed line that turns faintly green when ticked, with 24 px before the submit button.
+
+### Page Widths
+Ordinary pages keep the 1120 px column. Pages with a side menu (the Admin Panel and My Account) use up to **1360 px**, centred, with a 196 px menu, so a wide table fits with every action on one line. Up to 1180 px the side menu becomes a row of tabs above the content. Below 1100 px every table turns into cards (label on the left, value on the right; two columns of fields in the admin panel), so nothing ever scrolls sideways. From 1024 px up the navbar is three columns, logo | links | account, the outer two equally wide, so the links sit on the page's centre line.
+
+### Language Switch
+**Role:** the right end of the navbar, before the account (ddd.md 4.1.8).
+A small pill (Ledger Panel, 1 px Hairline, fully round) with two mono 11 px links, **TR** and **EN**; the current one sits on Raised Panel in Gold Tint with a gold hairline ring. One click reloads the same page in that language. With it, About and API Docs live in the footer (Archive Gray links between the course and the university line); between 721 and 1023 px the navbar links take a second row under the brand and the account.
+
 ### Navbar Account
 **Role:** the right end of the navbar (ddd.md 4.1.3).
-A guest sees "Giriş yap" (Archive Gray text link, Panel on hover) and the Register Button; the management links are hidden. A signed-in user sees a pill (Ledger Panel, 1 px Hairline, fully round) with a 28 px avatar, the first name in Inter 600 13 px and the role in mono 10 px Gold Tint, linking to their profile, and a small ghost "Çıkış" button (a form posting to `/logout`). An admin also sees "Approvals" among the links.
+A guest sees "Giriş yap" (Archive Gray text link, Panel on hover) and the Register Button; the management links are hidden. A signed-in user sees a pill (Ledger Panel, 1 px Hairline, fully round) with a 28 px avatar, the first name in Inter 600 13 px and the role in mono 10 px Gold Tint, linking to their profile, and a small ghost "Çıkış" button (a form posting to `/logout`). The links themselves change with the role (ddd.md 4.1.5): a guest sees Home, About and API Docs; students and graduates see "Graduates" and "My Applications" and no API Docs; an admin also sees "Admin".
 
 ### Login Page
 **Role:** `/login` (Turkish, public).
@@ -474,7 +502,7 @@ Three cards in a row; each opens with a 32 px circle with a 1 px gold hairline a
 
 ### Footer
 **Role:** the bottom of every page.
-1 px Hairline top rule, 24 px padding, centered IBM Plex Mono 12 px upper case Archive Gray, two parts: `YBSB3001 — WEB PROGRAMMING` (`lang="en"`) and `İSTANBUL ÜNİVERSİTESİ · İKTİSAT FAKÜLTESİ · YÖNETİM BİLİŞİM SİSTEMLERİ` (`lang="tr"`), so each language gets its own upper-case letters.
+1 px Hairline top rule, 24 px padding, centered IBM Plex Mono 12 px upper case Archive Gray, two parts: `YBSB3001 — WEB PROGRAMMING`, the About and API Docs links, and `İSTANBUL ÜNİVERSİTESİ · İKTİSAT FAKÜLTESİ · YÖNETİM BİLİŞİM SİSTEMLERİ`, all in the chosen language (<html lang> follows it, so upper case writes İ in Turkish).
 
 ### Page Hero
 **Role:** the top of every page except the home page: the home hero without the film (homework: "apply the home page design to all pages").

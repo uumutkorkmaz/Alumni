@@ -15,9 +15,12 @@ if TYPE_CHECKING:
     from app.models.job_posting import JobPosting
 
 # password_hash is never selected here: it never leaves the database through the pages or the API.
-COLUMNS = "id, name, email, role, status, graduation_year, department, student_number, title, position"
+COLUMNS = (
+    "id, name, email, role, status, graduation_year, department, student_number, title, position, "
+    "company, job_title, city, linkedin_url, bio"
+)
 # Account status (ddd.md 4.1.2): a registration is pending until an admin reviews it.
-STATUSES = ("pending", "active", "rejected")
+STATUSES = ("pending", "active", "rejected", "suspended")  # suspended: closed by an admin (4.1.4)
 
 # Roles (ddd.md section 4.1.1). One role per user; the order is the order of the pages and forms.
 ROLES = ("student", "alumni", "academic", "staff", "admin")
@@ -59,12 +62,14 @@ class User(Base):
             name="ck_users_graduation_year_by_role",
         ),
         Index("ix_users_role", "role"),
-        CheckConstraint("status IN ('pending', 'active', 'rejected')", name="ck_users_status"),
+        CheckConstraint("status IN ('pending', 'active', 'rejected', 'suspended')", name="ck_users_status"),
         Index("ix_users_status", "status"),
         UniqueConstraint("student_number", name="uq_users_student_number"),
         CheckConstraint(
             "status <> 'rejected' OR rejection_reason IS NOT NULL", name="ck_users_rejection_reason"
         ),
+        CheckConstraint("linkedin_url IS NULL OR linkedin_url LIKE 'https://%'", name="ck_users_linkedin_url_https"),
+        CheckConstraint("application_count BETWEEN 1 AND 3", name="ck_users_application_count"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -86,6 +91,14 @@ class User(Base):
     )
     rejection_reason: Mapped[str | None] = mapped_column(String(300))
     last_login_at: Mapped[datetime | None] = mapped_column(TIMESTAMP())
+    # How many times this person applied (a rejected person may apply again, at most 3 times, ddd.md 4.1.2)
+    application_count: Mapped[int] = mapped_column(server_default=text("1"))
+    # Career profile, filled in by the person on /me/profile (ddd.md 4.1.6)
+    company: Mapped[str | None] = mapped_column(String(150))
+    job_title: Mapped[str | None] = mapped_column(String(120))
+    city: Mapped[str | None] = mapped_column(String(100))
+    linkedin_url: Mapped[str | None] = mapped_column(String(300))
+    bio: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(), server_default=text("CURRENT_TIMESTAMP"))
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(), server_default=text("CURRENT_TIMESTAMP"))
 
@@ -227,7 +240,10 @@ def partial_update_user(user_id: int, data: UserUpdate) -> dict:
 
 
 def delete_user(user_id: int) -> None:
+    from app.models.profile import CV_DIR, delete_user_files
     from app.models.registration import UPLOAD_DIR
+
+    cvs = delete_user_files(user_id)  # their rows go with the account (ON DELETE CASCADE)
 
     with get_engine().begin() as conn:
         # A registration document still on disk goes with the account (its row is removed by
@@ -246,3 +262,5 @@ def delete_user(user_id: int) -> None:
         raise HTTPException(status_code=404, detail="User not found")
     if stored:
         (UPLOAD_DIR / stored).unlink(missing_ok=True)
+    for name in cvs:
+        (CV_DIR / name).unlink(missing_ok=True)

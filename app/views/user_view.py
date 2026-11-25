@@ -152,27 +152,139 @@ def render_user_list(users: list[dict], pending: int = 0) -> str:
     return render_page("Users", body, ACTIVE)
 
 
-def render_user_detail(user: dict) -> str:
+def _duration(months: int) -> str:
+    years, rest = divmod(months, 12)
+    parts = ([f"{years} yr{'s' if years > 1 else ''}"] if years else []) + ([f"{rest} mo"] if rest else [])
+    return " ".join(parts) or "1 mo"
+
+
+def _timeline(items: list[str]) -> str:
+    return '<ol class="timeline">' + "".join(f"<li>{i}</li>" for i in items) + "</ol>"
+
+
+def _experience(e: dict) -> str:
+    when = f'{e["start"]} &ndash; {e["end"] or "now"} &middot; {_duration(e["months"])}'
+    city = f' &middot; {escape(e["city"])}' if e.get("city") else ""
+    desc = f'<p class="tl-desc">{escape(e["description"])}</p>' if e.get("description") else ""
+    now = ' <span class="badge ok">now</span>' if not e["end"] else ""
+    return (f'<div class="tl-title">{escape(e["title"])}{now}</div>'
+            f'<div class="tl-sub">{escape(e["company"])}{city}</div><div class="tl-when mono">{when}</div>{desc}')
+
+
+def _education(e: dict) -> str:
+    what = ", ".join(escape(x) for x in (e.get("degree"), e.get("field")) if x)
+    desc = f'<p class="tl-desc">{escape(e["description"])}</p>' if e.get("description") else ""
+    return (f'<div class="tl-title">{escape(e["school"])}</div>'
+            + (f'<div class="tl-sub">{what}</div>' if what else "")
+            + f'<div class="tl-when mono">{e["start_year"]} &ndash; {e["end_year"] or "now"}</div>{desc}')
+
+
+def _certificate(c: dict) -> str:
+    issued = f' &middot; <span class="mono">{c["issued"]}</span>' if c.get("issued") else ""
+    link = (f' <a class="link-arrow" href="{escape(c["credential_url"])}" target="_blank" rel="noopener noreferrer">'
+            'Show credential <span class="arrow" aria-hidden="true">&rarr;</span></a>') if c.get("credential_url") else ""
+    return f'<div class="tl-title">{escape(c["name"])}</div><div class="tl-sub">{escape(c["issuer"])}{issued}</div>{link}'
+
+
+def _profile_section(title: str, items: list, render, own: bool, empty: str, anchor: str) -> str:
+    if items:
+        inner = _timeline([render(i) for i in items])
+    elif own:
+        inner = f'<p class="muted" style="margin:0">{empty} <a href="/me/profile#{anchor}">Add it</a>.</p>'
+    else:
+        return ""
+    return f'<section class="card pp-section" data-reveal><h2>{title}</h2>{inner}</section>'
+
+
+def render_user_detail(user: dict, sections: dict | None = None, activity: dict | None = None) -> str:
+    """The public profile (ddd.md 4.1.7), the way LinkedIn shows one: who the person is and what they
+    do now, then about, experience, education and certificates, and on the side the contact details
+    and what they published here. Every signed-in member sees it."""
+    sections = sections or {"experiences": [], "educations": [], "certificates": []}
+    activity = activity or {"postings": [], "announcements": []}
+    viewer = me() or {}
+    own = viewer.get("id") == user["id"]
+
+    current = next((e for e in sections["experiences"] if not e["end"]), None)
+    if user.get("job_title") or user.get("company"):
+        headline = " at ".join(escape(v) for v in (user.get("job_title"), user.get("company")) if v)
+    elif current:
+        headline = f'{escape(current["title"])} at {escape(current["company"])}'
+    else:
+        headline = escape(user["department"])
+    place = " &middot; ".join(x for x in (escape(user.get("city") or ""), escape(user["department"]) if headline != escape(user["department"]) else "") if x)
+
+    actions = ""
+    if own:
+        actions += button("Edit my profile", "/me/profile", "primary")
+    elif policy.can_edit_user(user):
+        actions += button("Edit account", f"/users/{user['id']}/edit", "primary")
+    if user.get("linkedin_url"):
+        actions += f'<a class="btn btn-ghost" href="{escape(user["linkedin_url"])}" target="_blank" rel="noopener noreferrer">LinkedIn</a>'
+    if user.get("email") and not own:
+        actions += f'<a class="btn btn-ghost" href="mailto:{escape(user["email"])}">Email</a>'
+
+    year = f" &middot; {_year_text(user)}" if user["graduation_year"] else ""
+    head = f"""
+    <section class="pp-head" data-reveal>
+      <span class="pp-avatar" aria-hidden="true">{initials(user['name'])}</span>
+      <div class="pp-who">
+        <span class="pill">{ROLE_LABELS[user['role']]}{year}</span>
+        <h1>{escape(user['name'])}</h1>
+        <p class="pp-headline">{headline}</p>
+        {f'<p class="pp-place">{place}</p>' if place else ""}
+        <div class="cta">{actions}</div>
+      </div>
+    </section>"""
+
+    about = ""
+    if user.get("bio"):
+        about = f'<section class="card card-featured pp-section" data-reveal><h2>About</h2><p class="content">{escape(user["bio"])}</p></section>'
+    elif own:
+        about = ('<section class="card pp-section" data-reveal><h2>About</h2><p class="muted" style="margin:0">'
+                 'A few sentences about you. <a href="/me/profile">Write them</a>.</p></section>')
+    main = (
+        about
+        + _profile_section("Experience", sections["experiences"], _experience, own, "No experience yet.", "experiences")
+        + _profile_section("Education", sections["educations"], _education, own, "No education yet.", "educations")
+        + _profile_section("Certificates", sections["certificates"], _certificate, own, "No certificates yet.", "certificates")
+    )
+    if not main:
+        main = '<section class="card pp-section"><p class="muted" style="margin:0">Nothing shared on this profile yet.</p></section>'
+
+    email = (f'<a href="mailto:{escape(user["email"])}">{escape(user["email"])}</a>' if user["email"]
+             else '<span class="muted">Hidden: only staff, academics and the person see it</span>')
+    details = f"""
+      <section class="card" data-reveal>
+        <dl class="dl">
+          <dt>Email</dt><dd>{email}</dd>
+          <dt>Role</dt><dd>{role_badge(user['role'])}</dd>
+          {f'<dt>{"Expected graduation" if user["role"] == "student" else "Graduation year"}</dt><dd class="mono">{user["graduation_year"]}</dd>' if user["graduation_year"] else ""}
+          <dt>Department</dt><dd>{escape(user['department'])}</dd>
+          {f'<dt>City</dt><dd>{escape(user["city"])}</dd>' if user.get("city") else ""}
+        </dl>
+      </section>"""
+    act = ""
+    if activity["postings"]:
+        act += "<h3>Job postings</h3><ul class=\"me-list\">" + "".join(
+            f'<li><a href="/job-postings/{p["id"]}">{escape(p["title"])}</a><span class="sub">{escape(p["company"])}'
+            f'{"" if p["is_active"] else " &middot; closed"}</span></li>' for p in activity["postings"]) + "</ul>"
+    if activity["announcements"]:
+        act += "<h3>Announcements</h3><ul class=\"me-list\">" + "".join(
+            f'<li><a href="/announcements/{a["id"]}">{escape(a["title"])}</a><span class="sub mono">{a["created_at"]}</span></li>'
+            for a in activity["announcements"]) + "</ul>"
+    if act:
+        act = f'<section class="card pp-activity" data-reveal><h2>Activity</h2>{act}</section>'
+
     body = f"""
-    {page_hero(
-        f"User #{user['id']} &middot; {ROLE_LABELS[user['role']]}" + (f" &middot; {_year_text(user)}" if user['graduation_year'] else ""),
-        escape(user['name']),
-        escape(user['department']),
-        (button("Edit", f"/users/{user['id']}/edit", "primary") if policy.can_edit_user(user) else "")
-        + button("Applications", "/applications"),
-        size="compact",
-    )}
-    <section class="card card-featured" data-reveal>
-      <dl class="dl">
-        <dt>Email</dt><dd>{f'<a href="mailto:{escape(user["email"])}">{escape(user["email"])}</a>' if user['email'] else '<span class="muted">Hidden: only staff, academics and the user see it</span>'}</dd>
-        <dt>Role</dt><dd>{role_badge(user['role'])}</dd>
-        <dt>{"Expected graduation" if user['role'] == "student" else "Graduation year"}</dt><dd class="mono">{user['graduation_year'] or "&ndash;"}</dd>
-        <dt>Department</dt><dd>{escape(user['department'])}</dd>
-      </dl>
-    </section>
+    {head}
+    <div class="detail-grid pp-grid">
+      <div class="detail-main">{main}</div>
+      <aside class="detail-side">{details}{act}</aside>
+    </div>
     {back_link("/users", "Back to users")}
     """
-    return render_page(user["name"], body, ACTIVE, narrow=True)
+    return render_page(user["name"], body, ACTIVE)
 
 
 def render_user_edit_form(user: dict) -> str:

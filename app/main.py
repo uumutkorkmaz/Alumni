@@ -6,7 +6,12 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.controllers.account_controller import AccountController, CvController
+from app.controllers.language_controller import LanguageController
+from app.controllers.admin_controller import AdminController
 from app.controllers.admin_registration_controller import AdminRegistrationController
+from app.controllers.api_account_controller import ApiAccountController
+from app.controllers.api_admin_controller import ApiAdminController
 from app.controllers.announcement_controller import AnnouncementController
 from app.controllers.api_announcement_controller import ApiAnnouncementController
 from app.controllers.api_auth_controller import ApiAuthController
@@ -21,6 +26,7 @@ from app.controllers.register_controller import RegisterController
 from app.controllers.user_controller import UserController
 from app.database.stats import get_home_data
 from app.middleware.auth import auth_middleware
+from app.middleware.language import language_middleware
 from app.middleware.logger import log_requests
 from app.middleware.not_found_guardian import not_found_guardian
 from app.middleware.server_error_guardian import server_error_guardian
@@ -28,7 +34,21 @@ from app.views.error_view import render_generic_not_found_page
 from app.views.home_view import render_home
 from app.views.layout import render_page
 
-app = FastAPI(title="Alumni Tracking System")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    # Rejected registrations that did not apply again are deleted after 30 days (ddd.md 4.1.2).
+    try:
+        from app.models.registration import purge_rejected
+        purge_rejected()
+    except Exception:  # the database may not be up yet; the admin panel and /register run it too
+        pass
+    yield
+
+
+app = FastAPI(title="Alumni Tracking System", lifespan=lifespan)
 # The middleware added last runs outermost. From the inside out: auth (who is signed in, may they
 # reach this address; ddd.md 4.1.3), 404 guardian, 5xx guardian (it also catches a failure inside
 # the ones within it), logger (it logs the final answer).
@@ -36,6 +56,8 @@ app.middleware("http")(auth_middleware)
 app.middleware("http")(not_found_guardian)
 app.middleware("http")(server_error_guardian)
 app.middleware("http")(log_requests)
+# Outermost: the language is known before anything renders a page, error pages included (4.1.8).
+app.middleware("http")(language_middleware)
 
 if os.environ.get("DEBUG_ROUTES") == "1":
     # Test-only route to see the 5xx guardian at work; it exists only when DEBUG_ROUTES=1 in .env.
@@ -88,6 +110,24 @@ login_controller = LoginController()
 api_auth_controller = ApiAuthController()
 app.include_router(login_controller.router)
 app.include_router(api_auth_controller.router)
+
+# Admin panel (ddd.md 4.1.4)
+admin_controller = AdminController()
+api_admin_controller = ApiAdminController()
+app.include_router(admin_controller.router)
+app.include_router(api_admin_controller.router)
+
+# The signed-in person's own pages (ddd.md 4.1.6)
+app.include_router(AccountController().router)
+app.include_router(ApiAccountController().router)
+app.include_router(CvController().router)
+app.include_router(LanguageController().router)
+
+if os.environ.get("DEV_LOGIN") == "1":
+    # TEMPORARY: one-click login as each role's test account, only when DEV_LOGIN=1 in .env (ddd.md 4.1.4).
+    from app.controllers.dev_login_controller import DevLoginController
+
+    app.include_router(DevLoginController().router)
 
 
 @app.get("/", response_class=HTMLResponse)

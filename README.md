@@ -1,3 +1,5 @@
+<p align="center"><img src="app/static/logo-mark.svg" width="88" alt="Alumni Tracking logo: a gateway arch with a graduation cap" /></p>
+
 # Alumni Tracking System
 
 A backend system to track Management Information Systems (MIS) graduates, built for the Web Programming (YBSB3001) course. Graduates (users), announcements, job postings and applications are managed through HTML pages and a JSON API, stored in PostgreSQL, and the whole system starts with one command: `docker compose up`.
@@ -14,7 +16,11 @@ A backend system to track Management Information Systems (MIS) graduates, built 
 - [Environment Variables](#environment-variables)
 - [Database, Migrations and Seeding](#database-migrations-and-seeding)
 - [Pages and API Endpoints](#pages-and-api-endpoints)
+- [Authentication and authorization](#authentication-and-authorization) (registration and approval, sign in and out, sessions, roles, how a request is checked)
 - [Middleware: the request pipeline](#middleware-the-request-pipeline) (logger, 404 guardian, generic 404 page, 5xx guardian, error log, auth)
+- [Admin panel](#admin-panel) (accounts and roles, registrations, content, sessions, audit log; the temporary test logins)
+- [My account](#my-account) (each person's own pages under `/me`)
+- [Languages](#languages) (TR | EN)
 - [Project Architecture (MVC)](#project-architecture-mvc)
 - [Troubleshooting](#troubleshooting)
 - [Progress](#progress)
@@ -75,6 +81,7 @@ Configuration and secrets (database user, password, ports) are not hard-coded in
 | `STUDENT_EMAIL_DOMAIN` | `api` | Students register with an address on this domain (default `ogr.iu.edu.tr`). |
 | `STAFF_EMAIL_DOMAIN` | `api` | Academic and administrative staff register with an address on this domain (default `istanbul.edu.tr`). Graduates may use any address. |
 | `SESSION_COOKIE_SECURE` | `api` | `1` sends the session cookie only over HTTPS; keep `0` on `http://localhost`. |
+| `DEV_LOGIN` | `api` | **Temporary.** `1` shows one-click test logins on `/login` ([Admin panel](#test-accounts-and-one-click-login-temporary)). Default `0`; never `1` where others can reach the app. |
 
 > If you add a new variable, add it to both `.env` and `.env.example`. Never commit `.env`.
 > `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` only take effect when the `pgdata` volume is created for the first time. To apply new values to an existing volume, run `docker compose down -v` (this deletes the stored database data).
@@ -132,7 +139,8 @@ The app is connected to PostgreSQL. The pages and the JSON API of each resource 
 | GET | `/register` | Registration (Turkish, public): role cards (student, graduate, academic, staff), the fields of the chosen role, password, document upload, consent ([ddd.md 4.1.2](ddd.md#412-registration)) |
 | POST | `/register` | Creates a pending account and its document, or shows the form again with a message under each wrong field |
 | GET | `/register/done` | "Your application was received" |
-| GET | `/admin/registrations` | Review queue: pending accounts with their document; Approve, or Reject with a reason (open until the login task) |
+| GET | `/admin` | Admin panel: overview (admins only, [Admin panel](#admin-panel)); also `/admin/users`, `/admin/content`, `/admin/sessions`, `/admin/audit` |
+| GET | `/admin/registrations` | Review queue: pending accounts with their document; Approve, or Reject with a reason; the recently rejected below (admins only) |
 | GET | `/admin/registrations/{user_id}/document` | Opens the uploaded document (deleted after the review) |
 | POST | `/admin/registrations/{user_id}/approve` · `/reject` | Decide on a registration |
 | GET | `/404` | Generic 404 page; invalid browser requests are redirected here (answers 404) |
@@ -223,6 +231,112 @@ Every page shares one navbar (Home, About, Users, Announcements, Job Postings, A
 - **Job posting rules** ([ddd.md 4.3.1](ddd.md#431-validation-rules-for-a-job-posting)): `title` is required (at most 120 characters), `company` and `city` are required, and a posting needs **at least one** of `description` and `application_url` (either one, or both). The JSON field for the place is `city` (it was `location` before migration `0004`).
 - **Status codes:** a duplicate user email, a duplicate application and an application to a closed posting answer `409`; invalid input answers `422`; a missing id answers `404` with a reason; a database failure answers `503` with an error id (see [Middleware](#middleware-the-request-pipeline)).
 
+## Authentication and authorization
+
+Who can get in (**authentication**) and what each person may do once inside (**authorization**). The full design, with every rule, is in [ddd.md 4.1.1 to 4.1.4](ddd.md#411-roles-and-permissions); this section is the overview.
+
+### At a glance
+
+| Topic | How it works |
+| --- | --- |
+| Accounts | One account per person, with one **role**: `student`, `alumni` (graduate), `academic`, `staff` or `admin`, and a **status**: `pending`, `active`, `rejected` or `suspended`. Only `active` accounts sign in. |
+| Getting an account | Register at `/register` with a role-specific email and a document; an admin approves or rejects it. Admin accounts are never created by registering. |
+| Signing in | Email and password at `/login` (or `POST /api/login`). A random session token goes into an HttpOnly cookie. |
+| Passwords | Hashed with **scrypt** and a random salt (`app/security.py`); the password itself is never stored or logged. |
+| Checking every request | The **auth middleware** turns the cookie into the signed-in user and checks the address against the role rules before any controller runs. |
+| Finer rules | `app/policy.py`: who is the author of a new record, who may change an application's status, which buttons a page shows. |
+
+### 1. Registering and getting approved
+
+1. **Register** at `/register` (or `POST /api/register`, multipart). Every role signs up with a matching email:
+
+   | Role | Email | Document to upload |
+   | --- | --- | --- |
+   | Student | `@ogr.iu.edu.tr` | Student certificate (e-Devlet) |
+   | Graduate | their own email | Graduation certificate or diploma |
+   | Academic | `@istanbul.edu.tr` | Staff ID card or a letter of duty |
+   | Administrative staff | `@istanbul.edu.tr` | Staff ID card or a letter of duty |
+
+   The domains come from `STUDENT_EMAIL_DOMAIN` and `STAFF_EMAIL_DOMAIN` ([Environment Variables](#environment-variables)). The document is a PDF, JPG or PNG of at most 5 MB, recognised by its content, not its name. The password needs at least 8 characters with a letter and a digit. The account starts as **`pending`**.
+2. **An admin reviews it** in the admin panel (*Registrations*): opens the document, compares it with the details, and **approves** (`active`) or **rejects with a reason** (`rejected`). The document file is deleted right after the decision.
+3. **Signing in before the decision** (right password) shows an **application status page** instead of the site: *under review*, or *rejected* with the reason. No session is opened.
+4. **After a rejection** the person can correct their details and **apply again with the same email**, at most **3 applications** in all. A rejected account that does not apply again is **deleted after 30 days** (also by `python -m app.cli purge-rejected`), and the deletion is written to the audit log.
+
+Email verification with a confirmation link is not built yet (planned; see [Progress](#progress)).
+
+### 2. Signing in and out
+
+| | Page | API (Postman, Swagger) |
+| --- | --- | --- |
+| Sign in | `GET /login`, form `POST /login` (email, password, "Beni hatırla"); `?next=/some/page` brings you back after signing in (only pages of this site) | `POST /api/login` with `{"email", "password", "remember"}` |
+| Who am I | the name at the right of the navbar | `GET /api/me` |
+| Sign out | the *Çıkış* button (`POST /logout`) | `POST /api/logout` |
+
+Answers of `POST /api/login`: **200** with the user and the cookie; **401** wrong email or password (the same answer for an unknown email, so it does not reveal who has an account); **403** pending, rejected or suspended; **429** after 5 wrong passwords for one email (locked for 15 minutes).
+
+**Sessions.** Each sign-in creates a row in the `sessions` table. The browser gets the cookie `alumni_session`: a 32-byte random token, `HttpOnly` (scripts cannot read it), `SameSite=Lax`, and `Secure` when `SESSION_COOKIE_SECURE=1` (for HTTPS). The database keeps only the token's **SHA-256**, so a copy of the database cannot be used to sign in. A session lasts **12 hours**, or **30 days** with "Beni hatırla". It ends at sign-out, when it expires, when the password is changed (all other sessions), when an admin ends it, changes the role or suspends the account.
+
+### 3. Roles: who may do what
+
+| Action | Student | Graduate | Academic | Staff | Admin |
+| --- | :-: | :-: | :-: | :-: | :-: |
+| See graduates, users, announcements, job postings | ✓ | ✓ | ✓ | ✓ | ✓ |
+| See other users' email addresses | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Edit their own career profile, experience, education, certificates (`/me/profile`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Edit a user's checked details (name, year, department) | ✗ | ✗ | ✗ | students and graduates | ✓ |
+| Add a user | ✗ | ✗ | ✗ | students and graduates | ✓ |
+| Delete a user, give or change a role | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Publish an announcement | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Edit or delete an announcement | ✗ | ✗ | own | own | ✓ |
+| Open a job posting | ✗ | ✓ | ✓ | ✓ (also for the department) | ✓ |
+| Edit, close or delete a job posting | ✗ | own | own | ✓ | ✓ |
+| Apply to a job posting (with a CV), save postings | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Withdraw an application | own | own | ✗ | ✗ | ✗ |
+| Decide on applications (review, interview, accepted, rejected) | ✗ | to their postings | to their postings | ✓ | ✓ |
+| Open an applicant's CV | own | own + sent to their postings | sent to their postings | ✓ | ✓ |
+| Review registrations, use the admin panel | ✗ | ✗ | ✗ | ✗ | ✓ |
+
+### 4. How a request is checked
+
+```text
+request ─► auth middleware ─► controller (app/policy.py) ─► model (data rules) ─► database
+```
+
+1. **The auth middleware** (`app/middleware/auth.py`) reads the cookie and finds the active user of a valid session.
+   - **Public addresses** need nobody: `/`, `/about`, `/login`, `/register`, `/404`, `/lang/…`, static files, `/api/health`, `/api/login`, `/api/register`, the API docs and the course's demo routes.
+   - **Everything else needs signing in.** A guest asking for a page is sent to `/login?next=…`; a guest calling the API gets **401**.
+   - **Rules by address** (the first match decides) then check the role or the owner, e.g. `/admin…` only for admins, `POST /announcements` for academics, staff and admins, editing a posting for its poster, staff or an admin. A signed-in user without the right gets **403**: a page saying who may do it, or JSON with the reason.
+2. **The controller** checks what only it can see, with `app/policy.py`: the author of a new announcement and the applicant of a new application are always the signed-in user (a different id in the form is ignored); only the poster, staff or an admin change an application's status, and the applicant may only withdraw.
+3. **The model** keeps the data rules, whoever calls it: a student cannot become the author of an announcement, a role needs its graduation year, an account that is not active cannot act.
+4. **The pages show only what you may do**: no Edit or Delete button you cannot use, no form for a role that cannot create, the menu changes with the role ([ddd.md 4.1.5](ddd.md#415-dynamic-navigation-menu-by-role)).
+
+Everything on `/me/...` works on the signed-in account only: no id of another account is taken from the address or the form.
+
+### 5. Your own account's security
+
+On **`/me/security`** (My account → Security): change the password (the current one is asked; an account created without a password sets its first one), see every browser you are signed in on and sign out one or all of the others, and delete your account with your password (not for admins).
+
+### 6. Admins
+
+- The **first admin** is created on the command line (admins cannot register): `docker compose exec api python -m app.cli create-admin --name "Ad Soyad" --email you@example.com` (the password is asked twice, not shown).
+- Give any account a password: `docker compose exec api python -m app.cli set-password --email someone@example.com`.
+- In the [admin panel](#admin-panel) an admin changes roles, suspends and reactivates accounts, ends sessions, deletes accounts and reviews registrations. **Safety rules:** an admin cannot change their own role, suspend or delete themselves, and the last active admin keeps the role. Every change is written to the **audit log**.
+
+### 7. Trying it out
+
+```bash
+# Sign in through the API and keep the cookie (Git Bash / Linux / macOS)
+curl -c cookies.txt -H "Content-Type: application/json" \
+     -d '{"email": "you@example.com", "password": "YourPassword1"}' http://localhost:8000/api/login
+curl -b cookies.txt http://localhost:8000/api/me          # 200: who you are
+curl http://localhost:8000/api/me                          # 401: no cookie
+curl -b cookies.txt -X POST http://localhost:8000/api/logout
+```
+
+In Swagger (`/docs`) call `POST /api/login` first; the browser keeps the cookie for the other calls. For quick tests on your own computer there are [one-click test logins](#test-accounts-and-one-click-login-temporary) (`DEV_LOGIN=1`, temporary).
+
+**Not built yet:** email verification, a CSRF token on the forms (today `SameSite=Lax` cookies and POST-only changes protect them), throttling that survives a restart.
+
 ## Middleware: the request pipeline
 
 A **middleware** runs around every request: before the route's controller runs and after its answer is ready. Four of them shape what leaves the app (`app/middleware/`, registered in `app/main.py`):
@@ -243,13 +357,7 @@ The middleware added last runs outermost, so `main.py` adds them from the inside
 
 ### Auth middleware, login and logout
 
-Details and the full rule table: [ddd.md 4.1.3](ddd.md#413-login-logout-and-the-auth-middleware).
-
-- **Sign in** at `/login` (or `POST /api/login` with `{"email", "password", "remember"}` for Postman and Swagger; the session cookie is kept and sent with the next requests). **Sign out** with the button in the navbar (`POST /logout`) or `POST /api/logout`. `GET /api/me` shows who is signed in.
-- **Sessions** are rows in `sessions`; the cookie `alumni_session` (HttpOnly, SameSite=Lax) holds a random token whose SHA-256 is all the database keeps. 12 hours, or 30 days with "Beni hatırla". Only `active` accounts sign in. Five wrong passwords for one email lock it for 15 minutes.
-- **Public without signing in:** `/`, `/about`, `/login`, `/register`, `/404`, static files, `/api/health`, `/api/login`, `/api/register`, the API docs and the course's demo routes. **Everything else needs signing in**, and some actions a role: only academics, staff and admins publish announcements; students do not open job postings; only students and graduates apply (always as themselves); editing is for the owner, staff or an admin as the table says; only an admin deletes users, gives roles and reviews registrations.
-- **The pages show only what you may do** (no Edit or Delete you cannot use, no create form for a role that cannot create); students and graduates do not see other users' email addresses.
-- **Users from before registration have no password.** Give one: `docker compose exec api python -m app.cli set-password --email someone@example.com` (asked twice, not shown). The first admin: `docker compose exec api python -m app.cli create-admin --name "Ad Soyad" --email ...`.
+See [Authentication and authorization](#authentication-and-authorization) for the whole picture and [ddd.md 4.1.3](ddd.md#413-login-logout-and-the-auth-middleware) for the full rule table.
 
 ### Request logging (logger middleware)
 
@@ -336,6 +444,49 @@ error: sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) could not tr
 - Log files are not committed (`logs/*` is in `.gitignore`); only the empty folder (`logs/.gitkeep`) is.
 - Client mistakes (4xx) are not written here: they are not server errors. They appear in the terminal request log with their status code.
 
+## Admin panel
+
+`/admin`, for admins only ([ddd.md 4.1.4](ddd.md#414-admin-panel)). The navbar shows **Admin** to an admin.
+
+| Part | What you can do |
+| --- | --- |
+| Overview | Counts by role and status, pending registrations, open postings, who is signed in, the latest actions. |
+| Users | Every account in every status, filtered by role, status or text: change the role, suspend or reactivate, sign the account out, delete. You cannot change your own role, suspend or delete yourself, and the last active admin keeps the role. |
+| Registrations | Approve or reject the pending registrations (with their document). |
+| Content | Every announcement, job posting and application: open or close a posting, set an application's status, delete, or edit through the record's page. |
+| Sessions | Every open session; end one. |
+| Audit log | Every change made in the panel: who, what, when. |
+
+The same through the API (`ApiAdmin` tag): `GET /api/admin/overview`, `GET /api/admin/users?role=&status=&q=`, `PATCH /api/admin/users/{id}` with `{"role": ...}` and/or `{"status": "suspended" | "active"}`, `DELETE /api/admin/users/{id}`, `GET /api/admin/sessions`, `DELETE /api/admin/sessions/{id}`, `GET /api/admin/audit`.
+
+**Your own admin account.** The task's "assign admin role to you" was done in the panel on the student's own account (user #21, see the audit log). To sign in with it, give it a password first: `docker compose exec api python -m app.cli set-password --email <your email>`.
+
+### Test accounts and one-click login (temporary)
+
+To try every role quickly, `DEV_LOGIN=1` in your `.env` shows **Admin, Akademisyen, Öğrenci, Personel, Mezun** buttons on `/login`; one click signs in as that role's test account, no password. Create the accounts once with `docker compose exec api python -m app.cli create-test-users` (the buttons also create a missing one); remove them with `delete-test-users`. With `DEV_LOGIN=0` (the default in `.env.example`) the route does not exist and the buttons are gone. **This is for testing on your own computer only and will be removed.**
+
+## My account
+
+Every signed-in person has their own pages under `/me`; click your name at the right of the navbar ([ddd.md 4.1.6](ddd.md#416-user-specific-pages-my-account)). The left menu depends on the role:
+
+| Page | Who | What |
+| --- | --- | --- |
+| `/me` | everyone | Your numbers, shortcuts, profile completeness, open postings for you |
+| `/me/profile` | everyone | Account details (read only) and your career profile: company, job title, city, LinkedIn, about you |
+| `/me/applications` | student, graduate | Your applications and their status; change the letter, withdraw |
+| `/me/saved` | student, graduate | Postings you saved with **Save** on a posting |
+| `/me/postings` | graduate, academic, staff, admin | Your postings (open / close) and the applications they received, with your decision |
+| `/me/announcements` | academic, staff, admin | Your announcements |
+| `/me/security` | everyone | Change or set your password, see where you are signed in and sign out other browsers, delete your account |
+
+**Your public profile** (`/users/{id}`, [ddd.md 4.1.7](ddd.md#417-public-profile-and-cvs)) works like a LinkedIn profile: headline, about, **experience, education and certificates** (added under *Your story* on `/me/profile`) and what you published here. Every signed-in member can see it. Students and graduates also keep a **CV** (PDF, at most 5 MB) there and attach it when they apply; only they, staff, admins and the poster they applied to can open it.
+
+The same as JSON under `/api/me/...` (Swagger tag `ApiMyAccount`). If an admin created your account without a password, set it on `/me/security` after a quick login, or with the `set-password` CLI command.
+
+## Languages
+
+Every page is available **entirely in Turkish or entirely in English**: use the **TR | EN** switch at the right of the navbar ([ddd.md 4.1.8](ddd.md#418-two-languages-tr--en)). The choice is remembered in a cookie; without one the site is in Turkish. What people type (names, postings, announcements) stays as written, and the JSON API stays in English. The translations are in [`app/i18n_catalog.py`](app/i18n_catalog.py); a new interface text needs one line there.
+
 ## Project Architecture (MVC)
 
 The project follows the **Model–View–Controller (MVC)** pattern, split into dedicated files/folders under `app/`, with middleware around every request:
@@ -348,6 +499,10 @@ AlumniTrackingSystem/
 │   ├── security.py                              # Password hashing (scrypt) for registration and login
 │   ├── auth.py                                  # Login, logout, sessions, the signed-in user of the request
 │   ├── policy.py                                # Who may do what: used by controllers and views (ddd.md 4.1.3)
+│   ├── devlogin.py                              # TEMPORARY: test accounts and one-click login (DEV_LOGIN=1)
+│   ├── static/logo-mark.svg                     # The logo mark: the gate and the cap (brand.md §3)
+│   ├── i18n.py                                  # TR / EN: translates each finished page into the chosen language
+│   ├── i18n_catalog.py                          # The translations (English <-> Turkish)
 │   ├── cli.py                                   # python -m app.cli create-admin (admins cannot register)
 │   ├── controllers/
 │   │   ├── __init__.py
@@ -356,6 +511,11 @@ AlumniTrackingSystem/
 │   │   ├── register_controller.py               # RegisterController -> /register pages
 │   │   ├── login_controller.py                  # LoginController -> /login, /logout
 │   │   ├── api_auth_controller.py               # ApiAuthController -> /api/login, /api/logout, /api/me
+│   │   ├── admin_controller.py                  # AdminController -> the admin panel under /admin
+│   │   ├── account_controller.py                # AccountController -> the person's own pages under /me
+│   │   ├── api_account_controller.py            # ApiAccountController -> /api/me/...
+│   │   ├── api_admin_controller.py              # ApiAdminController -> /api/admin/...
+│   │   ├── dev_login_controller.py              # TEMPORARY: POST /dev-login/{role}, only with DEV_LOGIN=1
 │   │   ├── admin_registration_controller.py     # AdminRegistrationController -> /admin/registrations review queue
 │   │   ├── api_register_controller.py           # ApiRegisterController -> /api/register and /api/admin/registrations
 │   │   ├── announcement_controller.py           # AnnouncementController -> HTML pages under /announcements
@@ -382,6 +542,10 @@ AlumniTrackingSystem/
 │   │   ├── user.py                              # User ORM model, roles, schemas + CRUD on the users table
 │   │   ├── registration.py                      # Registration rules by role, the document, the admin review
 │   │   ├── session.py                           # Session ORM model (the sessions table)
+│   │   ├── admin.py                             # Admin panel data: counts, role and status changes, sessions, audit log
+│   │   ├── account.py                           # The signed-in person's own data (/me): profile, password, sessions, own rows
+│   │   ├── saved_posting.py                     # SavedPosting ORM model (the saved_postings table)
+│   │   ├── profile.py                           # Public profile sections (experience, education, certificates) and CVs
 │   │   ├── announcement.py                      # Announcement ORM model, schemas + CRUD on the announcements table
 │   │   ├── job_posting.py                       # JobPosting ORM model, schemas, validation rules + functions
 │   │   └── application.py                       # Application ORM model, schemas + functions
@@ -392,6 +556,8 @@ AlumniTrackingSystem/
 │   │   ├── user_view.py                         # HTML for user list/detail/edit pages
 │   │   ├── register_view.py                     # HTML for /register (Turkish) and its page script
 │   │   ├── login_view.py                        # HTML for /login (Turkish)
+│   │   ├── admin_view.py                        # HTML for the admin panel
+│   │   ├── account_view.py                      # HTML for the /me pages
 │   │   ├── admin_registration_view.py           # HTML for the review queue
 │   │   ├── announcement_view.py                 # HTML for announcement list/detail/edit pages
 │   │   ├── job_posting_view.py                  # HTML for job posting list/detail/edit pages
@@ -466,7 +632,14 @@ Work in progress: built incrementally week by week.
 
 | Item | State |
 | --- | --- |
-| **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) | **Built**: migration `0005`, role rules in the models (who may publish, post, apply), role badges and lists on the pages ([ddd.md §4.1.1](ddd.md#411-roles-and-permissions)). The permission table (who may do what) waits for the login. |
+| **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) | **Built**: migration `0005`, role rules in the models (who may publish, post, apply), role badges and lists on the pages ([ddd.md §4.1.1](ddd.md#411-roles-and-permissions)). The permission table is enforced since the login task ([Authentication and authorization](#authentication-and-authorization)). |
 | **Registration** | **Built** ([ddd.md §4.1.2](ddd.md#412-registration), migration `0006`): students sign up with their `@ogr.iu.edu.tr` address, academic and administrative staff with an `@istanbul.edu.tr` address, graduates with any email; everyone uploads a document and an admin approves the account at `/admin/registrations`. The first admin: `docker compose exec api python -m app.cli create-admin --name "..." --email ...`. |
 | **Email verification** (confirmation link) | **Deferred to a later task** by decision: the first version of registration does not send a confirmation email. |
+| **Rejected registrations** | **Built** ([ddd.md §4.1.2](ddd.md#412-registration), migration `0011`): a status page after signing in, applying again (3 times at most), deletion after 30 days. |
+| **Two languages (TR / EN)** | **Built** ([ddd.md §4.1.8](ddd.md#418-two-languages-tr--en)): a switch in the navbar; every page fully in Turkish or English. |
+| **Public profile and CVs** | **Built** ([ddd.md §4.1.7](ddd.md#417-public-profile-and-cvs), migration `0010`): LinkedIn-style profile with experience, education, certificates and activity; a CV attached to applications. |
+| **User-specific pages** | **Built** ([ddd.md §4.1.6](ddd.md#416-user-specific-pages-my-account), migration `0009`): `/me` overview, career profile, my applications, saved postings, my postings and received applications, my announcements, password and sessions. |
+| **Dynamic navigation** | **Built** ([ddd.md §4.1.5](ddd.md#415-dynamic-navigation-menu-by-role)): the navbar changes with the role (`MENU` in `layout.py`). |
+| **Admin panel** | **Built** ([ddd.md §4.1.4](ddd.md#414-admin-panel), migration `0008`): accounts and roles, suspension, content, sessions, audit log; the admin role was given to the student's account. |
+| **Test accounts and one-click login** | **Temporary**, for trying the roles (`DEV_LOGIN=1`); to be removed. |
 | **Login, logout and the auth middleware** | **Built** ([ddd.md §4.1.3](ddd.md#413-login-logout-and-the-auth-middleware), migration `0007`): sessions in the database, role rules on every request, the pages show only what each role may do. Still open: a page to end one's own sessions, throttling that survives a restart, CSRF tokens. |

@@ -1,11 +1,12 @@
 """The admin's review queue of registrations (ddd.md 4.1.2). A management page, so in English."""
 from html import escape
 
+from app.models.registration import MAX_APPLICATIONS, REJECTED_KEEP_DAYS
 from app.models.user import ROLE_LABELS
-from app.views.layout import button, initials, page_hero, render_page, section_head, stat_tiles
+from app.views.admin_view import admin_shell
+from app.views.layout import initials, section_head, stat_tiles
 from app.views.user_view import role_badge
 
-ACTIVE = "/users"
 TYPE_LABELS = {"application/pdf": "PDF", "image/jpeg": "JPG", "image/png": "PNG"}
 
 
@@ -61,7 +62,32 @@ def _card(r: dict) -> str:
     </article>"""
 
 
-def render_registrations(pending: list[dict], done: str = "", name: str = "") -> str:
+def _rejected_table(rejected: list[dict]) -> str:
+    """Rejected registrations: the reason, the applications used, and when the account is deleted."""
+    if not rejected:
+        return '<section class="card"><p class="muted" style="margin: 0">No rejected registrations.</p></section>'
+    rows = "".join(
+        f'<tr><td><div class="cell-title"><span class="avatar" aria-hidden="true">{initials(r["name"])}</span>'
+        f'<div><b>{escape(r["name"])}</b><span class="sub">{escape(r["email"])}</span></div></div></td>'
+        f'<td>{role_badge(r["role"])}</td>'
+        f'<td>{escape(r["rejection_reason"] or "")}<span class="sub mono">{r["reviewed_at"]}</span></td>'
+        f'<td class="mono">{r["application_count"]} / {MAX_APPLICATIONS}</td>'
+        f'<td class="mono">{r["days_left"]} days</td>'
+        f'<td class="col-actions"><form method="post" action="/admin/users/{r["id"]}/delete" class="inline-form" '
+        """onsubmit="return confirm('Delete this rejected account now? This cannot be undone.')">"""
+        '<input type="hidden" name="back" value="/admin/registrations#rejected" />'
+        '<button type="submit" class="btn btn-danger btn-sm">Delete now</button></form></td></tr>'
+        for r in rejected
+    )
+    return (
+        '<div class="table-wrap"><table><thead><tr><th>Account</th><th>Role</th><th>Reason</th>'
+        '<th>Applications</th><th>Deleted in</th><th></th></tr></thead>'
+        f"<tbody>{rows}</tbody></table></div>"
+    )
+
+
+def render_registrations(pending: list[dict], done: str = "", name: str = "", rejected: list[dict] | None = None,
+                         error: str = "") -> str:
     by_role = {role: sum(1 for r in pending if r["role"] == role) for role in ("student", "alumni", "academic", "staff")}
     stats = stat_tiles(
         [("Pending", len(pending), "", "waiting for a decision")]
@@ -80,17 +106,21 @@ def render_registrations(pending: list[dict], done: str = "", name: str = "") ->
         '<section class="card"><p class="muted" style="margin: 0">No registrations are waiting. '
         'New ones appear here as soon as someone registers.</p></section>'
     )
-    body = f"""
-    {page_hero(
-        "Admin &middot; Registrations",
-        "Registrations to <em>review</em>",
-        "Check each document against the details typed in, then approve the account or reject it with a reason. The file is deleted after the decision.",
-        button("Registration page", "/register") + button("Users", "/users"),
-    )}
+    content = f"""
     {notice}
-    <div class="alert alert-warn" role="note">Until the login task, this page is open like the other management pages. Afterwards only admins reach it, and the reviewer is recorded.</div>
     {stats}
     {section_head("Waiting for a decision", f"{len(pending)} pending")}
     <div class="review-list">{cards}</div>
+    <div id="rejected" class="me-gap">{section_head("Recently rejected", f"deleted {REJECTED_KEEP_DAYS} days after the decision unless they apply again")}</div>
+    {_rejected_table(rejected or [])}
+    <p class="hint">A rejected person sees the reason when they sign in, and may correct their details and apply again with the same email, {MAX_APPLICATIONS} applications in all.</p>
     """
-    return render_page("Registrations", body, ACTIVE)
+    return admin_shell(
+        "registrations",
+        "Registrations to <em>review</em>",
+        "Check each document against the details typed in, then approve the account or reject it with a reason. The file is deleted after the decision.",
+        content,
+        len(pending),
+        done="Deleted." if done == "Account deleted." else "",
+        error=error,
+    )

@@ -1,22 +1,28 @@
 from html import escape
 
-NAV_LINKS = [
-    ("/", "Home"),
-    ("/about", "About"),
-    ("/users", "Users"),
-    ("/announcements", "Announcements"),
-    ("/job-postings", "Job Postings"),
-    ("/applications", "Applications"),
-    ("/docs", "API Docs"),
+# The menu is built from the signed-in user's role (ddd.md 4.1.5). One row per link:
+# (address, label, who sees it, label override per role). Who = "guest" (not signed in) or role names.
+EVERYONE = ("guest", "student", "alumni", "academic", "staff", "admin")
+SIGNED_IN = ("student", "alumni", "academic", "staff", "admin")
+MENU = [
+    ("/", "Home", EVERYONE, {}),
+    ("/about", "About", ("guest",), {}),
+    ("/users", "Users", SIGNED_IN, {"student": "Graduates", "alumni": "Graduates"}),
+    ("/announcements", "Announcements", SIGNED_IN, {}),
+    ("/job-postings", "Job Postings", SIGNED_IN, {}),
+    ("/applications", "Applications", ("academic", "staff", "admin"), {}),
+    ("/me/applications", "My Applications", ("student", "alumni"), {}),
+    ("/admin", "Admin panel", ("admin",), {}),
 ]
 
+
+def menu_for(role: str | None) -> list[tuple[str, str]]:
+    """The links one role sees, in order: [(address, label), ...]. role None is a guest."""
+    who = role or "guest"
+    return [(href, labels.get(who, label)) for href, label, roles, labels in MENU if who in roles]
+
 # The AT mark (brand.md §3): Istanbul University green, Midnight Ink letters, a gold hairline.
-FAVICON = (
-    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E"
-    "%3Crect x='.5' y='.5' width='31' height='31' rx='8.5' fill='%23439c86' stroke='%23b8860b' stroke-opacity='.6'/%3E"
-    "%3Ctext x='16' y='21' font-size='13' font-weight='700' text-anchor='middle' fill='%230d1614' "
-    "font-family='Arial'%3EAT%3C/text%3E%3C/svg%3E"
-)
+FAVICON = "/static/logo-mark.svg"  # the gate and the cap (brand.md §3)
 
 # Source Serif 4 (headings, numbers), Inter (interface), IBM Plex Mono (labels, ids). See DESIGN.md §3.
 FONTS = (
@@ -35,6 +41,13 @@ FONTS = (
 # (Delete confirmations are inline onsubmit handlers on the forms.)
 SCRIPT = """
 <script>
+// Phones show each table row as a card: every cell gets its column name from the table head.
+document.querySelectorAll('.table-wrap table').forEach(function (table) {
+  var heads = Array.prototype.map.call(table.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+  table.querySelectorAll('tbody tr').forEach(function (tr) {
+    Array.prototype.forEach.call(tr.children, function (td, i) { if (heads[i] && !td.hasAttribute('data-label')) td.setAttribute('data-label', heads[i]); });
+  });
+});
 // Filter: <input data-filter="id1 id2"> hides the table rows / album cards ([data-filter-item]) of
 // those elements whose text does not contain what was typed.
 document.querySelectorAll('input[data-filter]').forEach(function (input) {
@@ -217,10 +230,6 @@ document.querySelectorAll('[data-views]').forEach(function (group) {
 """
 
 
-# Guests see only the public pages; everything else needs signing in (ddd.md 4.1.3).
-GUEST_LINKS = {"/", "/about", "/docs"}
-
-
 def _account(active: str) -> str:
     """The right end of the navbar: the signed-in user with a logout button, or login and register."""
     from app.auth import me
@@ -231,12 +240,12 @@ def _account(active: str) -> str:
         login_cls = ' class="nav-login active"' if active == "/login" else ' class="nav-login"'
         return (
             f'<a{login_cls} href="/login">Giriş yap</a>'
-            f'<a class="nav-cta{" active" if active == "/register" else ""}" href="/register">Register</a>'
+            f'<a class="nav-cta{" active" if active == "/register" else ""}" href="/register">Kayıt ol</a>'
         )
     first = escape(user["name"].split()[0] if user["name"].split() else user["name"])
     return (
         '<div class="nav-user">'
-        f'<a class="nav-me" href="/users/{user["id"]}" title="{escape(user["name"])}">'
+        f'<a class="nav-me{" active" if active == "/me" else ""}" href="/me" title="My account: {escape(user["name"])}">'
         f'<span class="avatar" aria-hidden="true">{initials(user["name"])}</span>'
         f'<span class="nav-me-text"><b>{first}</b><small>{ROLE_LABELS[user["role"]]}</small></span></a>'
         '<form method="post" action="/logout" class="inline-form">'
@@ -245,14 +254,25 @@ def _account(active: str) -> str:
     )
 
 
+def _lang_switch() -> str:
+    """TR | EN: a link per language, back to this same page (ddd.md 4.1.8)."""
+    from app import i18n
+
+    links = "".join(
+        f'<a href="/lang/{code}" class="lang-opt{" active" if code == i18n.lang() else ""}" hreflang="{code}" '
+        f'lang="{code}"{" aria-current=\"true\"" if code == i18n.lang() else ""} '
+        f'data-i18n-keep>{code.upper()}</a>'
+        for code in i18n.LANGS
+    )
+    return f'<nav class="lang-switch" aria-label="Language / Dil">{links}</nav>'
+
+
 def render_nav(active: str) -> str:
     from app.auth import me
 
     user = me()
     active_attr = ' class="active" aria-current="page"'
-    items = [(h, l) for h, l in NAV_LINKS if user is not None or h in GUEST_LINKS]
-    if user is not None and user["role"] == "admin":
-        items.append(("/admin/registrations", "Approvals"))
+    items = menu_for(user["role"] if user else None)
     links = "".join(
         f'<a href="{href}"{active_attr if href == active else ""}>{label}</a>' for href, label in items
     )
@@ -260,31 +280,36 @@ def render_nav(active: str) -> str:
   <header class="site-nav">
     <div class="nav-inner">
       <a class="brand" href="/" aria-label="Alumni Tracking, home">
-        <span class="brand-mark" aria-hidden="true">AT</span>
+        <img class="brand-mark" src="/static/logo-mark.svg" width="34" height="34" alt="" />
         <span class="brand-name"><b>Alumni Tracking</b><small>İÜ &middot; İKTİSAT &middot; YBS</small></span>
       </a>
       <nav class="nav-links" aria-label="Main">{links}</nav>
-      <div class="nav-account">{_account(active)}</div>
+      <div class="nav-account">{_lang_switch()}{_account(active)}</div>
     </div>
   </header>"""
 
 
 def render_page(
-    title: str, body: str, active: str, narrow: bool = False, lang: str = "en", full_width: str = ""
+    title: str, body: str, active: str, narrow: bool = False, lang: str = "en", full_width: str = "",
+    wide: bool = False,
 ) -> str:
-    """Full HTML page: shared navbar, fonts, stylesheet, footer and script.
-    `title` is plain text (escaped here). `lang="tr"` for Turkish pages, so upper-case labels write İ.
+    """Full HTML page: shared navbar, fonts, stylesheet, footer and script, in the visitor's language.
+    `title` is plain text (escaped here). `lang` names the language the view wrote its text in; the
+    finished page is translated into the chosen one (TR or EN, app/i18n.py, ddd.md 4.1.8), and
+    <html lang> follows it, so upper-case labels write İ in Turkish.
     `full_width` is HTML placed edge to edge between the navbar and the page container (the home film)."""
-    width = " narrow" if narrow else ""
+    from app import i18n
+
+    width = " narrow" if narrow else " wide" if wide else ""  # wide: pages with a side menu (admin, /me)
     page_title = "Alumni Tracking System" if title == "Home" else f"{escape(title)} · Alumni Tracking"
-    return f"""<!DOCTYPE html>
-<html lang="{lang}">
+    return i18n.translate_html(f"""<!DOCTYPE html>
+<html lang="{i18n.lang()}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0d1614" />
   <title>{page_title}</title>
-  <link rel="icon" href="{FAVICON}" />
+  <link rel="icon" href="{FAVICON}" type="image/svg+xml" />
   {FONTS}
   <link rel="stylesheet" href="/static/app.css" />
 </head>
@@ -295,12 +320,13 @@ def render_page(
     {body}
   </main>
   <footer class="site-footer">
-    <span lang="en">YBSB3001 &mdash; Web Programming</span>
-    <span lang="tr">İstanbul Üniversitesi &middot; İktisat Fakültesi &middot; Yönetim Bilişim Sistemleri</span>
+    <span>YBSB3001 &mdash; Web Programming</span>
+    <nav class="footer-links" aria-label="Footer"><a href="/about">About</a><a href="/docs">API Docs</a></nav>
+    <span>İstanbul Üniversitesi &middot; İktisat Fakültesi &middot; Yönetim Bilişim Sistemleri</span>
   </footer>
   {SCRIPT}
 </body>
-</html>"""
+</html>""")
 
 
 def page_hero(

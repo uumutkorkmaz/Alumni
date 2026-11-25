@@ -4,7 +4,7 @@
 
 This document describes the database design of the Alumni Tracking System. The tables below are created by the migrations in [section 7](#7-migrations), and the app reads and writes them through the models in `app/models/` (see [section 8](#8-from-in-memory-models-to-tables)).
 
-> **Status:** all six tables (`users`, `announcements`, `job_postings`, `applications`, `registration_documents`, `sessions`) exist in the database: migrations `0001` to `0007` have been applied (`alembic current` shows `0007 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first. The validation rules for job postings are in [section 4.3.1](#431-validation-rules-for-a-job-posting). **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) and the announcement author as a user are **applied** by migration `0005` ([section 4.1.1](#411-roles-and-permissions)); its permission table is enforced by the auth middleware. **Registration** (account status, password hash, role fields, the uploaded document and the admin review) is applied by migration `0006` ([section 4.1.2](#412-registration)); email verification is deferred. **Login, logout and the auth middleware** are applied by migration `0007` ([section 4.1.3](#413-login-logout-and-the-auth-middleware)).
+> **Status:** all twelve tables (`users`, `announcements`, `job_postings`, `applications`, `registration_documents`, `sessions`, `admin_audit`, `saved_postings`, `experiences`, `educations`, `certificates`, `cv_files`) exist in the database: migrations `0001` to `0011` have been applied (`alembic current` shows `0011 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first. The validation rules for job postings are in [section 4.3.1](#431-validation-rules-for-a-job-posting). **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) and the announcement author as a user are **applied** by migration `0005` ([section 4.1.1](#411-roles-and-permissions)); its permission table is enforced by the auth middleware. **Registration** (account status, password hash, role fields, the uploaded document and the admin review) is applied by migration `0006` ([section 4.1.2](#412-registration)); email verification is deferred. **Login, logout and the auth middleware** are applied by migration `0007` ([section 4.1.3](#413-login-logout-and-the-auth-middleware)); the **admin panel** with its audit log and the `suspended` status by migration `0008` ([section 4.1.4](#414-admin-panel)); the **user pages** (career profile, saved postings) by migration `0009` ([section 4.1.6](#416-user-specific-pages-my-account)); the **public profile** (experience, education, certificates) and **CVs** on applications by migration `0010` ([section 4.1.7](#417-public-profile-and-cvs)).
 
 ## 1. Why a Database
 
@@ -88,7 +88,7 @@ Until now every row of `users` was a graduate. The system has other people too: 
 | **Users** | | | | | |
 | See the graduate album and the user list | ✓ | ✓ | ✓ | ✓ | ✓ |
 | See other users' email addresses | ✗ | ✗ | ✓ | ✓ | ✓ |
-| Edit their own profile | own | own | own | own | ✓ |
+| Edit their own profile | own career profile (4.1.6) | own career profile | own career profile | own career profile | ✓ |
 | Add a user | ✗ | ✗ | ✗ | ✓ (students and graduates) | ✓ |
 | Edit another user | ✗ | ✗ | ✗ | ✓ (students and graduates) | ✓ |
 | Delete a user | ✗ | ✗ | ✗ | ✗ | ✓ |
@@ -281,6 +281,25 @@ The fields that only some roles need (student number, title, position, the year 
 
 **Tested** (end to end, through the page and the API, everything removed afterwards): a student with a gmail address, a student year in the past, a missing student number, a weak password, two different passwords, no consent, no document, a text file named `.pdf`, a 5.3 MB file, an academic with a gmail address or without a title, staff without a position, a graduate year in the future and no role were all refused with the right message under the right field; a correct student registration redirected to `/register/done`; the same email (422 on the page, 409 on the API) and the same student number were refused; `admin` cannot register. The pending accounts were not in `/api/users` and could not apply (*"This account is pending, so it cannot apply to a job posting yet"*); the password was stored as `scrypt$16384$8$1$...`; the review queue listed them without any password field; the document opened as `application/pdf`; approving made the student active and removed the file (the document link then answers 404, a second approval 409); a rejection without a reason was refused and one with a reason stored it; deleting an account removed its file. Turkish names (`Şükrü Çağlayan Öztürk`) are stored as typed. `create-admin` made an admin whose password `verify_password` accepts (and a wrong one it refuses); a second one with the same email was refused.
 
+**Rejected registrations: the status page, applying again, deletion after 30 days** (migration `0011`).
+
+- **What a person sees.** Signing in with the right password while the account is `pending` or `rejected` does not open a session; it shows the **application status page**, in the same steps as the page after registering. For `pending`: received ✓, *an admin is checking your document* (highlighted), then sign in. For `rejected`: received ✓, *your application was rejected* with **the reason** and the decision date, how many applications are left, and a **Correct your details and apply again** button that opens `/register` with the email and role filled in. A wrong password still gets the usual "wrong email or password" (the page never says whether an account exists).
+- **Applying again.** Registering with the email of a rejected account (and the right role domain) updates that same account with the new details, password and document: back to `pending`, the old reason and decision cleared, `application_count` + 1. **At most 3 applications** in all: after the third rejection the page says no more applications are possible, and `/register` answers *this email was used for 3 applications*. While an application is pending, the same email gets *an application is already being reviewed*. The person's own student number is not counted as taken.
+- **Deleted after 30 days.** A rejected account that does not apply again within 30 days of the decision is deleted (KVKK: personal data is not kept longer than needed), together with its document record. This runs when the app starts, whenever the admin panel's overview or registrations page opens, before every registration (so the email is free again), and by `python -m app.cli purge-rejected`. Each deletion is written to the audit log as *rejected_purged* by **System**.
+- **Admin panel.** The Registrations part lists **Recently rejected** accounts below the queue: the reason and decision date, applications used (*n / 3*), days left before deletion, and **Delete now**.
+
+| Change | Type | Rule |
+| --- | --- | --- |
+| `users.application_count` | `INTEGER NOT NULL DEFAULT 1` | `ck_users_application_count`: 1 to 3. Existing accounts get 1. |
+
+| Route | What it does |
+| --- | --- |
+| `POST /login` (pending or rejected, right password) | The status page (403, no session). |
+| `GET /register?email=…&role=…` | The form with the email and role filled in (the "apply again" button). |
+| `GET /register/done?n=2` | "Received", saying which application it is. |
+
+**Tested** (end to end with a throwaway student account, removed afterwards): signing in while pending showed the status page with the review step highlighted and no session cookie; after a rejection it showed the reason, "2 applications left" and the apply-again link, in Turkish and in English; a wrong password still got the usual message. The form opened with the email filled in; the second application went through as *application 2* (`pending`, count 2, the old reason cleared, a new document); registering again while pending was refused; after the third rejection the page said all applications were used and a fourth registration was refused. The admin saw the list with *3 / 3* and the days left. With the decision moved 31 days back, `purge-rejected` deleted the account and the audit log showed *System: … rejected more than 30 days ago*; the email could register again at once.
+
 **Not in this task (written down so they are not forgotten):** email verification with a confirmation link (deferred); matching students and graduates against department lists, and e-Devlet barcode checks (discussed as later improvements). Signing in and protecting the review page came with the next two tasks (section 4.1.3).
 
 #### 4.1.3 Login, logout and the auth middleware
@@ -301,7 +320,7 @@ The fields that only some roles need (student number, title, position, the year 
 | `last_seen_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Updated at most once a minute. |
 | `user_agent` | `VARCHAR(200)` | nullable | The browser, to recognise one's own sessions later. |
 
-And `users.last_login_at TIMESTAMP` (nullable): when the user last signed in.
+And `users.last_login_at TIMESTAMP` (nullable): when the user last signed in. (The career profile columns and `saved_postings` come with section 4.1.6.)
 
 **The cookie** is `alumni_session`: `HttpOnly` (scripts cannot read it), `SameSite=Lax` (another site cannot send a form with it), `Path=/`, `Secure` when `SESSION_COOKIE_SECURE=1` (set it once the site runs on HTTPS). **Logout** (`POST /logout`, a button, not a link, so a page cannot log you out by loading an image) deletes the session row and the cookie.
 
@@ -314,7 +333,7 @@ And `users.last_login_at TIMESTAMP` (nullable): when the user last signed in.
 | --- | --- |
 | Everyone, signed in or not | `/`, `/about`, `/login`, `/register`, `/register/done`, `/404`, `/static/*`, `/api/health`, `/api/login`, `/api/register`, the API docs (`/docs`, `/api/swagger`, `/openapi.json`), the course's demo routes (`/hello`, `/sum`) |
 | `admin` | `/admin/*`, `/api/admin/*`; deleting a user |
-| `staff`, `admin`, or the user themself | Editing a user (`staff` only students and graduates); only `admin` changes a role (checked by the controller) |
+| `staff`, `admin` | Editing a user (`staff` only students and graduates); only `admin` changes a role (checked by the controller). The user themself no longer edits these details since 4.1.6: they were checked at registration; the person changes their career profile on `/me/profile`. |
 | `staff`, `admin` | Adding a user |
 | `academic`, `staff`, `admin` | Publishing an announcement; editing or deleting one: its author or `admin` |
 | Everyone but `student` | Opening a job posting; editing, closing or deleting one: its poster, `staff` or `admin` |
@@ -327,7 +346,146 @@ What the controllers add, because only they know the record or the body: the aut
 
 **Tested** (end to end through the pages and the API, with an admin, a graduate, a student, an academic and a staff account; everything restored afterwards): guests reach the public pages, are sent from `/users` to `/login?next=/users`, get 401 from `/api/users` and still the 404 page for an unknown address; the guest navbar shows only Home, About and API Docs. A wrong password and an unknown email get the same message; `next=//evil.com` goes to `/` while `next=/job-postings` goes there; the cookie is `HttpOnly; SameSite=lax; Path=/` and the database holds a 64-character hash. A graduate sees other users' emails hidden, cannot publish (403) or open the admin page (403), opens a posting that stays theirs even when the request names another poster, cannot edit someone else's posting (403) or hand theirs over (403). A student cannot open a posting (403), applies as themself whatever `user_id` says, cannot accept their own application (403) but can withdraw it; the posting's owner moves it to interview; the student sees only their own application and cannot delete it (403). An academic publishes as themself and cannot edit another's announcement (403); staff edit a student but not an academic, cannot change a role or delete a user (403). The admin reaches the review page and sees "Approvals". A pending account cannot sign in (403) and its old session stops working at once (401); the sixth try after five wrong passwords is refused (429); logout ends the session and `/users` sends to the login page again.
 
-**Still open:** a page to see and end one's own sessions; throttling that survives a restart; CSRF tokens (the `SameSite=Lax` cookie already stops cross-site form posts); email verification (deferred).
+**Still open:** a page to see and end one's own sessions (an admin can end anyone's, section 4.1.4); throttling that survives a restart; CSRF tokens (the `SameSite=Lax` cookie already stops cross-site form posts); email verification (deferred).
+
+#### 4.1.4 Admin panel
+
+> **Status:** applied by migration `0008`. The task was given in class: *"Create Admin panel → assign admin role to you → access panel and manipulate the data."*
+
+**The panel** lives under `/admin` (only `admin`, by the auth middleware's first rule) and has six parts, with the same left-hand menu:
+
+| Part | Address | What the admin does there |
+| --- | --- | --- |
+| Overview | `/admin` | Counts (users by role and status, pending registrations, open postings, applications, active sessions) and the latest actions of the log. |
+| Users | `/admin/users` | Every account in every status, with a filter by role, status and text. Change the **role**, **suspend** or **reactivate** an account, end its sessions, delete it. |
+| Registrations | `/admin/registrations` | The review queue of section 4.1.2. |
+| Content | `/admin/content` | Every announcement, job posting and application in one place: open or close a posting, set an application's status, delete any of them; edit through their own pages. |
+| Sessions | `/admin/sessions` | Who is signed in, since when, from which browser; end a session. |
+| Audit log | `/admin/audit` | Every change made in the panel: who, what, when. |
+
+**Rules that protect the system from its admins:** an admin cannot change their own role, suspend or delete themself, and the **last active admin** cannot lose the role or be suspended (otherwise nobody could reach the panel any more). A role change and a suspension end the account's sessions, so the new rights apply at once.
+
+**New status `suspended`.** An admin can close an account without deleting its data: it cannot sign in, its sessions end, and it is left out of the lists like a pending one. `ck_users_status` becomes `status IN ('pending', 'active', 'rejected', 'suspended')`; reactivating sets `active` again.
+
+**New table `admin_audit`** (one row per change made in the panel, kept even if the admin or the target is deleted):
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `id` | `SERIAL` | `PRIMARY KEY` | |
+| `admin_user_id` | `INTEGER` | `REFERENCES users(id) ON DELETE SET NULL` | Who did it; empty if that account was deleted later (the name is kept in `admin_name`). |
+| `admin_name` | `VARCHAR(100)` | `NOT NULL` | The admin's name at the time. |
+| `action` | `VARCHAR(40)` | `NOT NULL` | e.g. `role_changed`, `user_suspended`, `user_reactivated`, `user_deleted`, `sessions_ended`, `registration_approved`, `registration_rejected`, `posting_closed`, `posting_opened`, `application_status`, `announcement_deleted`, `posting_deleted`, `application_deleted`. |
+| `target_type` | `VARCHAR(30)` | `NOT NULL` | `user`, `announcement`, `job_posting`, `application`, `session`. |
+| `target_id` | `INTEGER` | nullable | The record's id (no foreign key: the record may be deleted, the log stays). |
+| `details` | `VARCHAR(300)` | nullable | A short sentence, e.g. "alumni → admin". |
+| `created_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`, indexed (`ix_admin_audit_created_at`) | |
+
+**Assigning the admin role to the student (the task's second step):** done in the panel by an admin, on the student's own account (user #21): Users → role `admin`. The change is in the audit log. The account still needs a password to sign in (`python -m app.cli set-password`), which only its owner should choose.
+
+**Test accounts and one-click login (temporary, for trying the roles).** With `DEV_LOGIN=1` in the local `.env` (default `0`), the login page shows one button per role (admin, academic, student, staff, graduate) that signs in as that role's test account at once, through `POST /dev-login/{role}`; with `0` the route does not exist and the buttons are not shown. The accounts (`test.admin@istanbul.edu.tr`, `test.akademisyen@istanbul.edu.tr`, `test.ogrenci@ogr.iu.edu.tr`, `test.personel@istanbul.edu.tr`, `test.mezun@example.com`) have no password and are made by `python -m app.cli create-test-users` and removed by `python -m app.cli delete-test-users`. **To be removed when testing is over; never on a server others can reach.** This is data, not a schema change.
+
+**Done and tested** (task 5, end to end): the five one-click logins sign in as admin, academic, student, staff and graduate (an unknown role answers 404); student, graduate, academic and staff get 403 on `/admin`, the admin reaches all six parts and sees "Admin" in the navbar. **The admin role was assigned to the student's own account** (`Umut Korkmaz`, #21) in Users; the audit log shows *role_changed · user #21 · Umut Korkmaz: Graduate → Admin*. Changing one's own role, suspending or deleting oneself were refused with a reason; giving an academic without a year the student role was refused (422). Suspending the test student ended its open session at once (401) and reactivating it worked. A posting was closed and opened again, a student's application was moved to *interview* and deleted, an academic's announcement was deleted, the staff account's sessions were ended (its session then answered 401). Every one of these changes is in the audit log with the test admin's name.
+
+#### 4.1.5 Dynamic navigation (menu by role)
+
+The navbar is built per request from the signed-in user's role: `MENU` and `menu_for(role)` in `app/views/layout.py`. One table, one row per link (address, label, who sees it, label per role). No database change.
+
+| Link | Guest | Student | Graduate | Academic | Staff | Admin |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: |
+| Home | yes | yes | yes | yes | yes | yes |
+| About | yes | footer | footer | footer | footer | footer |
+| Users | - | "Graduates" | "Graduates" | yes | yes | yes |
+| Announcements | - | yes | yes | yes | yes | yes |
+| Job Postings | - | yes | yes | yes | yes | yes |
+| Applications (`/applications`) | - | - | - | yes | yes | yes |
+| My Applications (`/me/applications`, 4.1.6) | - | yes | yes | - | - | - |
+| API Docs | footer | footer | footer | footer | footer | footer |
+| Admin panel | - | - | - | - | - | yes |
+
+Hiding a link is only convenience: the auth middleware (4.1.3) still decides what each role may open. The right end of the bar shows the person's name and role, a link to their own area `/me` (4.1.6), or Login and Register for a guest. **Tested:** the menu of a guest and of each of the five roles was read from the live pages (above table); the Admin link is highlighted on every `/admin` page. (Since 4.1.8 About and API Docs are in the footer, to make room for the TR | EN switch.)
+
+#### 4.1.6 User-specific pages (My account)
+
+Every signed-in person has their own area under `/me`, reached from the name pill at the right of the navbar. A left menu shows only the parts that fit the role (the same idea as the navbar, 4.1.5). Everything there works on the signed-in account only: no other account's id is taken from the address or the form, and every query is limited to the person's own rows.
+
+| Page | Who | What it does |
+| --- | --- | --- |
+| `/me` Overview | everyone | Numbers for the role (applications, interviews, saved postings; open postings and applications waiting for a decision; announcements; registrations to review for an admin), shortcuts, how complete the career profile is, and open postings the person has not applied to or saved yet. |
+| `/me/profile` | everyone | The account details checked at registration (name, email, role, department, year, student number, title, position), read only, and the **career profile** the person fills in: company, job title, city, LinkedIn address, a short "about you". The career profile shows on the public profile (`/users/{id}`), so the department can follow where graduates work. |
+| `/me/applications` | student, graduate | Every application with its status, the posting and its poster; counts per status. The letter can be changed while the application is `submitted`; it can be withdrawn until a decision is made. |
+| `/me/saved` | student, graduate | Postings kept with **Save** on a posting's page: open or closed, the deadline, whether the person has applied. |
+| `/me/postings` | graduate, academic, staff, admin | The person's postings with applications counted (waiting, interview, accepted); close or open one. Below, **applications received**: the person decides (submitted, under review, interview, accepted, rejected). Staff and admins also see the department's postings (no poster), which they manage. |
+| `/me/announcements` | academic, staff, admin | The person's announcements, with edit and delete. |
+| `/me/security` | everyone | Change the password (current password, then a new one by the registration rule); an account without a password yet (made by an admin or the CLI) sets its first one. Changing it signs out every other session. The list of browsers signed in, with sign-out per session or for all others. Deleting the account with the password (not for an admin: another admin removes it in the panel). |
+
+The same data as JSON under `/api/me/...` (`ApiMyAccount` tag): `GET/PATCH /api/me/profile`, `GET /api/me/applications`, `POST /api/me/applications/{id}/withdraw`, `GET /api/me/saved`, `PUT/DELETE /api/me/saved/{posting_id}`, `GET /api/me/postings`, `GET /api/me/received`, `GET /api/me/announcements`, `GET /api/me/sessions`, `POST /api/me/password`.
+
+**Why the account details are read only here.** They were checked against the uploaded document when an admin approved the registration (4.1.2). Changing the name or the graduation year should go through someone who can check it again: staff (for students and graduates) or an admin, on the user's edit page. So the user's own **Edit** on `/users/{id}/edit` (and `PUT/PATCH /api/users/{id}` on themself) was closed: it answers 403 for the person, and their profile page shows *My account* instead of *Edit*.
+
+**Database change (migration `0009`).**
+
+| Change | Type | Rule |
+| --- | --- | --- |
+| `users.company` | `VARCHAR(150)` NULL | Career profile. |
+| `users.job_title` | `VARCHAR(120)` NULL | Career profile. |
+| `users.city` | `VARCHAR(100)` NULL | Career profile. |
+| `users.linkedin_url` | `VARCHAR(300)` NULL | `ck_users_linkedin_url_https`: empty or starting with `https://`; the app also requires a `linkedin.com` address. |
+| `users.bio` | `VARCHAR(500)` NULL | Career profile ("about you"). |
+| `saved_postings` | new table | `user_id` (FK `users`, `ON DELETE CASCADE`) and `job_posting_id` (FK `job_postings`, `ON DELETE CASCADE`), together the primary key (a posting is saved once), `created_at`; `ix_saved_postings_job_posting_id`. |
+
+Deleting an account removes its applications and saved postings; its job postings and announcements stay, shown as the department's (`ON DELETE SET NULL`, as before).
+
+**Done and tested** (task 7, end to end, with the test accounts): a guest is sent to `/login?next=/me` (API: 401). The left menu of each role is as in the table; the parts a role does not have answer 403 (e.g. a student on `/me/postings`, staff on `/me/saved`). A graduate saved a career profile, which appeared on the public profile; a non-LinkedIn address was refused (422); a `name` sent with the profile form was ignored. A student saved a posting (the button turned to *Saved*), applied, changed the letter, was invited to an interview by staff (the department's posting) and saw *Next step: interviews* on the overview; the letter was then locked; the student withdrew, after which staff could not decide any more. Staff could not set `withdrawn`; an academic could not decide on or close another person's posting; another account could not withdraw the student's application (404). A graduate published, saw and closed their own posting. Password: a weak or mismatched one and a wrong current password were refused; a first password was set without a current one; changing it signed out the other three sessions while this one stayed; signing in with the new password worked. An admin could not delete their own account here, and a wrong password stopped a deletion. `alembic check` is clean after `0009`.
+
+#### 4.1.7 Public profile and CVs
+
+Every member has a **public profile** at `/users/{id}`, built the way a LinkedIn profile is: a header with the name, the role and class, a headline (job title at company, or the current job from the experience list) and the city; then **About**, **Experience**, **Education** and **Certificates** as timelines; on the side the account details and the person's **activity** here (their latest job postings and announcements). Every signed-in member sees it; guests do not (the `/users` pages need signing in, 4.1.3). The email follows the usual rule (hidden from students and graduates). The person fills it in on `/me/profile`, under *Your story*: add, edit and delete each entry in place.
+
+Students and graduates keep a **CV** (one PDF) on `/me/profile`, and choose on a posting's apply form: *my saved CV*, *upload a PDF* (which also becomes the saved CV) or *no CV*. The application keeps the CV it was sent with, even when the person later replaces or removes theirs.
+
+| Who opens a CV (`GET /cv/{id}`) | |
+| --- | --- |
+| The CV's owner | always |
+| Staff and admins | always (they manage applications) |
+| The poster of a job posting | only a CV sent with an application to that posting |
+| Anyone else | 404, so the CV's existence is not revealed; a guest is sent to the login page |
+
+A CV must start with the PDF signature (`%PDF-`, checked on the bytes, not the name) and be at most 5 MB. It is stored under `uploads/cv/` with a random name (never committed, like the registration documents) and served with its cleaned original name, `inline`, `nosniff` and `no-store`. A replaced CV that no application points to is deleted (row and file) at the person's next CV change; deleting an account deletes its CV files.
+
+**Database change (migration `0010`).**
+
+| Table | Columns | Rules |
+| --- | --- | --- |
+| `experiences` | `id`, `user_id`, `title` (120), `company` (150), `city` (100, NULL), `start_date` DATE, `end_date` DATE NULL (empty: works there now), `description` (1000, NULL) | `ck_experiences_dates`: the end is not before the start; the app also refuses a start in the future. |
+| `educations` | `id`, `user_id`, `school` (150), `degree` (100, NULL), `field` (150, NULL), `start_year`, `end_year` NULL (still studying), `description` (1000, NULL) | `ck_educations_years`: 1950 to 2100, the end not before the start. |
+| `certificates` | `id`, `user_id`, `name` (150), `issuer` (150), `issued_on` DATE NULL, `credential_url` (300, NULL) | `ck_certificates_credential_url_https`: empty or `https://`. |
+| `cv_files` | `id`, `user_id`, `original_name` (200), `stored_name` (80), `size_bytes`, `uploaded_at`, `replaced_at` NULL (NULL = the current CV) | `uq_cv_files_stored_name`. |
+| `applications.cv_file_id` | INTEGER NULL | FK to `cv_files`, `ON DELETE SET NULL`: the CV sent with the application. |
+
+Each `user_id` is a foreign key to `users` with `ON DELETE CASCADE` and an index `ix_<table>_user_id`. Months are entered as `YYYY-MM` and stored as the first day of the month.
+
+API: `GET /api/users/{id}/profile` (user, sections, activity); `POST /api/me/profile/{experiences|educations|certificates}`, `PUT` and `DELETE /api/me/profile/{kind}/{id}`; `GET`, `POST` (multipart field `cv`) and `DELETE /api/me/cv`; `GET /api/cv/{id}`.
+
+**Done and tested** (end to end with the test accounts): a graduate added a current and a past job, an education and a certificate; an end before the start, a missing title and an `http://` credential link were refused with the reason; the student saw all of it on the graduate's public profile (headline from the profile, four timeline entries) and through the API, while a guest was sent to login. The student could neither edit nor delete the graduate's entries (404). Staff could not upload a CV (403); a file that is not a PDF was refused; the student uploaded a CV and opened it (200, `application/pdf`), while a graduate not involved got 404. The student applied to the graduate's posting with the saved CV: the poster could then open it from *Applications received*, staff could too, an academic could not (404). After the student replaced the CV, the poster still opened the one sent with the application. Removing the CV and deleting the posting left no file behind. Turkish letters are stored as UTF-8 (checked on the bytes).
+
+#### 4.1.8 Two languages (TR | EN)
+
+Every page can be read **entirely in Turkish or entirely in English**. A **TR | EN** switch sits at the right of the navbar, next to the account; the choice is kept in a `lang` cookie for a year (`GET /lang/tr` or `/lang/en`, which goes back to the page the visitor was on, only within this site). Without a choice the site is in **Turkish**. No database change: the choice is a cookie, not a column.
+
+| Part | What it does |
+| --- | --- |
+| `app/middleware/language.py` | Outermost middleware: reads the cookie (`tr` or `en`, anything else counts as `tr`) into a context variable, so even error pages are in the right language. |
+| `app/controllers/language_controller.py` | `GET /lang/{tr\|en}`: sets the cookie and redirects back. Public. |
+| `app/i18n.py` | `render_page` passes every finished page through `translate_html`: each piece of text between tags, and `placeholder`, `title`, `aria-label`, `alt` and `confirm('…')` texts, is looked up in the catalogue and replaced. `<html lang>` follows the language, so capitals write İ in Turkish. |
+| `app/i18n_catalog.py` | The catalogue: English → Turkish for the pages written in English, Turkish → English for those written in Turkish (home, about, login, register). Headings with one gold `<em>` word are translated whole; sentences with a number or a name (e.g. "3 postings", "Suspend Ayşe Yılmaz?") are matched by patterns; texts like "Company · City · Contract" are translated piece by piece. The login and registration messages, which already existed in both languages, are added from `app/auth.py` and `app/models/registration.py`. |
+
+Texts that a page script shows later (the label for the chosen role, *Show / Hide* on the password, the chosen document's hint) wait in `data-t-*`, `data-label-*` and `data-doc-*` attributes and are translated with the page.
+
+**What is not translated, on purpose:** what people type (names, departments, posting titles, announcements, cover letters, profile entries) stays as written, since it is not in the catalogue and text areas are skipped; the JSON API and Swagger stay in English (they are for developers).
+
+With the switch the navbar got one more item, so **About and API Docs moved to the footer** for signed-in users (guests still see About in the bar, section 4.1.5); between 721 and 1023 px wide the links take a second row.
+
+**Done and tested:** a script opened 123 page and role combinations (every page for guests and the five roles, forms, edit pages, the 403 and 404 pages) in each language and listed every text still in the other language: in Turkish, nothing but people's own data and code names is left in English; in English, nothing but people's own data (Turkish names, departments, academic titles) is left in Turkish. A static scan of every string in the views and controllers checked the texts only some states show (refusals, flash messages). The navbar was measured for a guest, a student, an academic and an admin in both languages at 1920, 1440, 1280, 1100, 1024 and 901 px: every link shows. All earlier end-to-end tests (sections 4.1.6 and 4.1.7) pass again; messages after an action appear in the chosen language (e.g. *Kaydedilmedi: Başlık zorunlu.*).
 
 ### 4.2 `announcements`
 
@@ -579,8 +737,12 @@ Migrations are managed with [Alembic](https://alembic.sqlalchemy.org/). Each mig
 | `0005` | `migrations/versions/0005_user_roles.py` | Applies section 4.1.1: adds `users.role` (default `alumni`, `ck_users_role`, `ix_users_role`), makes `graduation_year` nullable with `ck_users_graduation_year_by_role`; creates a `staff` user for each existing announcement author, adds `announcements.author_id` (with `ix_announcements_author_id`), links the announcements and drops `author`. Downgrade restores `author` from the users' names and removes the office accounts it created. Depends on `0004`. | Applied |
 | `0006` | `migrations/versions/0006_registration.py` | Applies section 4.1.2: adds to `users` the `status` (default `active`, `ck_users_status`, `ix_users_status`), `password_hash`, `student_number` (`uq_users_student_number`), `title`, `position`, `consent_at`, `reviewed_at`, `reviewed_by_user_id` and `rejection_reason` (`ck_users_rejection_reason`); creates `registration_documents`. Downgrade drops them and removes the accounts that were never approved. Depends on `0005`. | Applied |
 | `0007` | `migrations/versions/0007_sessions.py` | Applies section 4.1.3: creates `sessions` (`uq_sessions_token_hash`, `ix_sessions_user_id`, `ix_sessions_expires_at`, `ON DELETE CASCADE` to `users`) and adds `users.last_login_at`. Downgrade drops them. Depends on `0006`. | Applied |
+| `0008` | `migrations/versions/0008_admin_panel.py` | Applies section 4.1.4: `ck_users_status` also allows `suspended`; creates `admin_audit` (`ix_admin_audit_created_at`, `ON DELETE SET NULL` to the admin). Downgrade drops the table and makes suspended accounts active. Depends on `0007`. | Applied |
+| `0009` | `migrations/versions/0009_user_pages.py` | Applies section 4.1.6: adds `users.company`, `job_title`, `city`, `linkedin_url` (`ck_users_linkedin_url_https`), `bio`; creates `saved_postings` (primary key `user_id` + `job_posting_id`, both `ON DELETE CASCADE`; `ix_saved_postings_job_posting_id`). Downgrade drops them. Depends on `0008`. | Applied |
+| `0010` | `migrations/versions/0010_profiles_and_cvs.py` | Applies section 4.1.7: creates `experiences` (`ck_experiences_dates`), `educations` (`ck_educations_years`), `certificates` (`ck_certificates_credential_url_https`) and `cv_files` (`uq_cv_files_stored_name`), each with `ix_<table>_user_id` and `ON DELETE CASCADE` to `users`; adds `applications.cv_file_id` (`ON DELETE SET NULL`). Downgrade drops them (the PDF files stay in `uploads/cv`). Depends on `0009`. | Applied |
+| `0011` | `migrations/versions/0011_reapply_after_rejection.py` | Section 4.1.2 (rejected registrations): adds `users.application_count` (`NOT NULL DEFAULT 1`, `ck_users_application_count` 1 to 3). Downgrade drops it. Depends on `0010`. | Applied |
 
-`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied and the existing rows were untouched. Later `0004` (job posting validation rules) `0005` (user roles, announcement authors; tested first on a temporary database, section 4.1.1) `0006` (registration, section 4.1.2) and `0007` (sessions, section 4.1.3), each tested the same way, were applied the same way, and `alembic current` now shows `0007 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
+`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied and the existing rows were untouched. Later `0004` (job posting validation rules) `0005` (user roles, announcement authors; tested first on a temporary database, section 4.1.1) `0006` (registration, section 4.1.2), `0007` (sessions, section 4.1.3) and `0008` (admin panel, section 4.1.4) `0009` (user pages, section 4.1.6) and `0010` (public profile and CVs, section 4.1.7) and `0011` (applying again after a rejection, section 4.1.2), each tested the same way, were applied the same way, and `alembic current` now shows `0011 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
 
 | Command (run in the project folder) | Meaning |
 | --- | --- |
@@ -748,6 +910,6 @@ These routes were tested against a temporary database with all three migrations 
 - Column names use `snake_case`: `graduation_year`, `created_at`.
 - Every table has an `id` primary key plus `created_at` and `updated_at` columns.
 - Foreign keys are named `<role>_<table>_id` when the role matters: `posted_by_user_id` says both which table it points to and why.
-- Indexes are named `ix_<table>_<column>`; unique constraints `uq_<table>_<columns>`; check constraints `ck_<table>_<rule>` (`ck_users_role`, `ck_users_graduation_year_by_role`, `ck_users_status`).
+- Indexes are named `ix_<table>_<column>`; unique constraints `uq_<table>_<columns>`; check constraints `ck_<table>_<rule>` (`ck_users_role`, `ck_users_graduation_year_by_role`, `ck_users_status`). A log table is named after what it records: `admin_audit`.
 - Fixed lists (role, employment type, status) are stored as lowercase `snake_case` text checked by a `CHECK`, not as numbers: `alumni`, `under_review`, `full_time`. The pages turn them into labels.
 - A foreign key to the user who did something is named after the act or the role: `posted_by_user_id` (job postings), `author_id` (announcements, planned).

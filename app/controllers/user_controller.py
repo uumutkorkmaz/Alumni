@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
 from app import policy
+from app.models import profile as profile_model
 from app.models import registration as registration_model
 from app.models import user as user_model
 from app.models.user import UserCreate, UserUpdate
@@ -58,7 +59,8 @@ class UserController:
     def get(self, user_id: int) -> HTMLResponse:
         """GET /users/{id} -> detail page (R)."""
         user = policy.hide_emails([user_model.get_user(user_id)])[0]
-        return HTMLResponse(render_user_detail(user))
+        # The public profile (ddd.md 4.1.7): experience, education, certificates and activity.
+        return HTMLResponse(render_user_detail(user, profile_model.sections(user_id), profile_model.activity(user_id)))
 
     def edit_form(self, user_id: int) -> HTMLResponse:
         """GET /users/{id}/edit -> pre-filled edit form."""

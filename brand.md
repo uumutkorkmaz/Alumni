@@ -46,23 +46,25 @@ The university's corporate identity guide is not public, so the palette is based
 
 ## 3. Logo
 
-The logo is the **AT mark** next to the **wordmark**, optionally followed by the **endorsement line**:
+<img src="app/static/logo-mark.svg" width="96" alt="The Alumni Tracking mark: a gateway arch with a graduation cap above it" />
+
+The logo is the **mark** next to the **wordmark**, optionally followed by the **endorsement line**. The mark is **"the gate and the cap"**: an arched gateway on a threshold with a mortarboard above it. The gate is the one the home page film walks through (*every graduate once walked through this gate*); together, the cap and the arch also read as a graduate wearing a cap. It is an original drawing, not the university's gate or emblem (see the rule in section 1).
 
 | Part | Specification |
 | --- | --- |
-| Mark | The letters **AT**, weight 800, colour `--ink` (`#0d1614`), in a 32 × 32 px square with 9 px rounded corners, filled with **İÜ green** `#439c86`, with a 1 px inner hairline of gold at 45 % opacity (`rgba(184, 134, 11, 0.45)`). Contrast of the letters: 5.55 : 1. |
+| Mark | `app/static/logo-mark.svg` (64 × 64 viewBox). A square with 16/64 rounded corners filled with **İÜ green** `#439c86` and a gold hairline edge (`#b8860b` at 55 %); the gate (two pillars and a half-round arch, 5.5/64 stroke, round ends, on a threshold) and the cap (board, crown, tassel) in **Midnight Ink** `#0d1614`. Contrast of the drawing on the green: 5.55 : 1. In the navbar at 34 px. |
 | Wordmark | "Alumni Tracking", weight 700, 17 px, colour `--text`, 10 px to the right of the mark. |
-| Endorsement line | "İstanbul Üniversitesi · İktisat Fakültesi · YBS", 12 px, `--muted`, upper case with 0.08em spacing. Used on the home page and the About page, not in the navbar. |
-| Favicon | The mark alone: **AT** in `#0d1614` on a `#439c86` square with rounded corners (inline SVG in `layout.py`). |
+| Endorsement line | "İstanbul Üniversitesi · İktisat Fakültesi · YBS", 12 px, `--muted`, upper case with 0.08em spacing; in the navbar shortened to "İÜ · İKTİSAT · YBS". |
+| Favicon | The mark itself (`/static/logo-mark.svg`); it stays readable at 16 px. |
 | Where | Top left of every page, always a link to the home page (`/`). |
 
 Do:
 - Keep the mark and the wordmark together in the navbar.
-- Keep the mark square, green, with dark letters.
+- Keep the mark square, green, with the drawing in Midnight Ink, and keep the gap between the cap and the arch.
 
 Don't:
-- Recolour, stretch, outline or rotate the mark; put white letters on it (white on `#439c86` is only 3.31 : 1).
-- Put the mark on a light or busy background.
+- Recolour, stretch, outline or rotate the mark; draw it in white or gold on the green (both fail contrast).
+- Put the mark on a busy background, or replace the gate with the university's own building or emblem.
 - Write the name in another way ("AlumniTracking", "ALUMNI TRACKING", "AT System").
 
 ## 4. Colours
@@ -141,7 +143,7 @@ WCAG 2 contrast ratios, computed for the pairs the site uses:
 | `--primary` `#439c86` | `--bg` | 5.55 : 1 | AA |
 | `--primary` | `--panel` | 5.10 : 1 | AA |
 | `--primary-light` `#6cbca6` | `--panel` | 7.55 : 1 | AAA |
-| `--ink` `#0d1614` | `--primary` (logo mark) | 5.55 : 1 | AA |
+| `--ink` `#0d1614` | `--primary` (the drawing on the logo mark) | 5.55 : 1 | AA |
 | white | `--primary-deep` `#2c7a64` (button) | 5.15 : 1 | AA |
 | white | `#26705b` (button hover) | 5.91 : 1 | AA |
 | `--gold` `#b8860b` | `--bg` | 5.65 : 1 | AA |
@@ -192,6 +194,10 @@ Every page is built by `render_page` in `app/views/layout.py`: the same navbar, 
 | Navbar link | `.nav-links a` | `--muted`; hover `--text` on `--panel`; the active page `--text` with a 2 px gold underline that slides in from the left. |
 | Badge | `.badge` (+ status class) | Short status words with the colours of section 4.3. |
 | Register button | `.nav-cta` | The navbar's one call to action for guests: "Register" with a gold hairline, next to "Giriş yap". |
+| Language switch | `.lang-switch`, `.lang-opt` | TR and EN in a small pill in the navbar; the current language in gold (see DESIGN.md §4). |
+| Public profile | `.pp-head`, `.timeline` | A person's page: header with the avatar ring, then timelines of experience, education and certificates (see DESIGN.md §4). |
+| My account | `.me-grid`, `.me-who`, `.me-progress` | The person's own area: the admin panel's frame with the person at the top of the menu (see DESIGN.md §4). |
+| Admin panel | `.admin-grid`, `.admin-nav` | The admin's area: a menu card on the left, the part's content on the right; changes answer with one line (see DESIGN.md §4). |
 | Navbar account | `.nav-user` | For a signed-in user: avatar, first name and role in a pill, and a "Çıkış" button (see DESIGN.md §4). |
 | Role card | `.role-card` | The role choice on the registration page: a radio card with the role and the email it needs; the chosen one gets a green border and a gold underline. |
 | Role badge | `.badge.role-<role>` | A user's role: student (navy), graduate (green), academic (gold), staff (neutral), admin (soft red); see DESIGN.md §4. |

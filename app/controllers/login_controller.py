@@ -4,7 +4,9 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app import auth
+from app.models import registration as registration_model
 from app.views.login_view import render_login_page
+from app.views.register_view import render_application_status
 
 
 def safe_next(target: str | None) -> str:
@@ -40,6 +42,12 @@ class LoginController:
         try:
             token, _user, lifetime = auth.login(email, password, remember_me, request.headers.get("user-agent"))
         except auth.LoginError as error:
+            # Right password, but the registration is still waiting or was rejected: show where it
+            # stands, like the page after registering (ddd.md 4.1.2). No session is opened.
+            if error.code in ("pending", "rejected"):
+                info = registration_model.application_status(email)
+                if info is not None:
+                    return HTMLResponse(render_application_status(info), status_code=403)
             text = auth.message(error.code)
             if error.code == "rejected" and error.reason:
                 text += f" Neden: {error.reason}"

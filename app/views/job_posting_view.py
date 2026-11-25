@@ -57,6 +57,36 @@ def _user_link(user_id: int | None, users_by_id: dict[int, dict]) -> str:
     return f'<a href="/users/{user_id}">{name}</a>'
 
 
+def _cv_choice(cv: dict | None) -> str:
+    """Which CV goes with the application: the saved one, a new PDF (saved for next time) or none."""
+    saved = (
+        f'<label class="check"><input type="radio" name="cv_choice" value="saved" checked /> '
+        f'My saved CV: <a href="/cv/{cv["id"]}" target="_blank" rel="noopener">{escape(cv["original_name"])}</a></label>'
+        if cv else ""
+    )
+    return f"""<fieldset class="field full cv-choice"><legend class="label-like">CV</legend>
+          {saved}
+          <label class="check"><input type="radio" name="cv_choice" value="new" /> Upload a PDF
+            <input type="file" name="cv" accept="application/pdf,.pdf" aria-label="CV file (PDF)" /></label>
+          <label class="check"><input type="radio" name="cv_choice" value="none"{"" if cv else " checked"} /> Apply without a CV</label>
+          <span class="hint">PDF, at most 5 MB. An uploaded CV is also kept on your profile for next time.</span>
+        </fieldset>"""
+
+
+def _save_button(posting_id: int, saved: bool | None) -> str:
+    """Save / Saved for students and graduates (None: this person does not save postings)."""
+    if saved is None:
+        return ""
+    action = f"/me/saved/{posting_id}" + ("/remove" if saved else "")
+    label = "&#9733; Saved" if saved else "&#9734; Save"
+    title = "Remove from my saved postings" if saved else "Keep it under My account"
+    return (
+        f'<form method="post" action="{action}" class="inline-form">'
+        f'<input type="hidden" name="back" value="/job-postings/{posting_id}" />'
+        f'<button type="submit" class="btn btn-ghost{" is-saved" if saved else ""}" title="{title}">{label}</button></form>'
+    )
+
+
 def _external_link(url: str | None) -> str:
     if not url:
         return DASH
@@ -121,24 +151,36 @@ def render_job_posting_list(
 
 
 def render_job_posting_detail(
-    posting: dict, users: list[dict], applications: list[dict], error: str | None = None
+    posting: dict, users: list[dict], applications: list[dict], error: str | None = None, saved: bool | None = None,
+    cv: dict | None = None,
 ) -> str:
     users_by_id = {u["id"]: u for u in users}
+    viewer = me()
+    # The CVs are for the posting's poster, staff and admins (ddd.md 4.1.7); the applicant sees their own.
+    sees_cvs = bool(viewer) and (viewer["role"] in ("staff", "admin") or viewer["id"] == posting["posted_by_user_id"])
+
+    def cv_cell(a: dict) -> str:
+        if not a.get("cv_file_id") or not (sees_cvs or (viewer and viewer["id"] == a["user_id"])):
+            return DASH
+        return f'<a href="/cv/{a["cv_file_id"]}" target="_blank" rel="noopener">CV (PDF)</a>'
+
     rows = "".join(
         f"<tr><td>{_user_link(a['user_id'], users_by_id)}</td>"
         f'<td><span class="badge s-{a["status"]}">{a["status"].replace("_", " ")}</span></td>'
         f"<td>{escape(a['cover_letter'] or '') or DASH}</td>"
+        f"<td>{cv_cell(a)}</td>"
         f'<td class="date">{a["created_at"]}</td></tr>'
         for a in applications
-    ) or '<tr><td class="empty" colspan="4">Nobody has applied yet.</td></tr>'
+    ) or '<tr><td class="empty" colspan="5">Nobody has applied yet.</td></tr>'
 
     if is_open(posting) and policy.can_apply():
         # The applicant is the signed-in student or graduate (ddd.md 4.1.3).
         apply_form = f"""
-      <form class="form-grid" method="post" action="/job-postings/{posting['id']}/apply">
+      <form class="form-grid" method="post" action="/job-postings/{posting['id']}/apply" enctype="multipart/form-data">
         <div class="field full"><span class="label-like">Applicant</span><p class="fixed-value">{escape(me()["name"])} (you)</p></div>
         <div class="field full"><label for="cover_letter">Cover letter (optional)</label>
           <textarea id="cover_letter" name="cover_letter" rows="4"></textarea></div>
+        {_cv_choice(cv)}
         <div class="form-actions"><button type="submit" class="btn btn-primary">Send application</button></div>
       </form>"""
     elif not is_open(posting):
@@ -152,6 +194,7 @@ def render_job_posting_detail(
         escape(posting['title']),
         "",
         (button("Apply", "#apply", "primary", arrow=True) if is_open(posting) and policy.can_apply() else "")
+        + _save_button(posting['id'], saved)
         + (button("Edit", f"/job-postings/{posting['id']}/edit") if policy.can_edit_posting(posting) else "")
         + button("All job postings", "/job-postings"),
         meta=f"<span>{escape(posting['company'])}</span><span>{escape(posting['city'])}</span>{_status_badge(posting)}",
@@ -169,7 +212,7 @@ def render_job_posting_detail(
         {section_head("Applicants", plural(len(applications), "application"))}
         <div class="table-wrap" data-reveal>
           <table>
-            <thead><tr><th>Applicant</th><th>Status</th><th>Cover letter</th><th>Applied</th></tr></thead>
+            <thead><tr><th>Applicant</th><th>Status</th><th>Cover letter</th><th>CV</th><th>Applied</th></tr></thead>
             <tbody>{rows}</tbody>
           </table>
         </div>

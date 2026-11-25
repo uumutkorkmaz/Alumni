@@ -93,7 +93,27 @@ def main() -> int:
     admin.add_argument("--department", default="System administration")
     password = sub.add_parser("set-password", help="give an existing account a (new) password")
     password.add_argument("--email", required=True)
+    sub.add_parser("create-test-users", help="TEMPORARY: one test account per role, for the dev login")
+    sub.add_parser("delete-test-users", help="remove the test accounts")
+    sub.add_parser("purge-rejected", help="delete rejected accounts older than 30 days (also runs on its own)")
     args = parser.parse_args()
+    if args.command == "create-test-users":
+        from app import devlogin
+
+        for role, user_id in devlogin.create_all():
+            print(f"{role:9} test account #{user_id}")
+        print("Sign in with one click on /login when DEV_LOGIN=1 is in .env.")
+        return 0
+    if args.command == "delete-test-users":
+        from app import devlogin
+
+        print(f"Deleted {devlogin.delete_all()} test account(s).")
+        return 0
+    if args.command == "purge-rejected":
+        from app.models.registration import purge_rejected
+
+        print(f"Deleted {purge_rejected()} rejected account(s) older than 30 days.")
+        return 0
     if args.command == "create-admin":
         return create_admin(args.name, args.email, args.department)
     if args.command == "set-password":

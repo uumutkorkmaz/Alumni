@@ -1,13 +1,17 @@
 from datetime import date
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
 from app import policy
 from app.models import application as application_model
 from app.models import job_posting as job_posting_model
+from app.auth import me
+from app.models import account as account_model
+from app.models import profile as profile_model
 from app.models import user as user_model
+from app.models.user import APPLICANT_ROLES
 from app.models.job_posting import JobPostingCreate
 from app.views.job_posting_view import (
     render_job_posting_detail,
@@ -160,11 +164,23 @@ class JobPostingController:
         job_posting_model.delete_job_posting(posting_id)
         return RedirectResponse(url="/job-postings", status_code=303)
 
-    def apply(self, posting_id: int, cover_letter: str = Form("")) -> HTMLResponse:
-        """Apply from the posting's own page, as the signed-in student or graduate. A refused
-        application (duplicate, closed) shows a message on the page."""
+    async def apply(self, posting_id: int, cover_letter: str = Form(""), cv_choice: str = Form("none"),
+                    cv: UploadFile | None = File(None)) -> HTMLResponse:
+        """Apply from the posting's own page, as the signed-in student or graduate, with the saved CV,
+        a new one (which also becomes the saved CV) or none (ddd.md 4.1.7). A refused application
+        (duplicate, closed, a file that is not a PDF) shows a message on the page."""
         try:
-            application_model.create_application(policy.applicant(), posting_id, cover_letter.strip() or None)
+            applicant = policy.applicant()
+            cv_id = None
+            if cv_choice == "new":
+                content = await cv.read(profile_model.MAX_CV_BYTES + 1) if cv is not None else b""
+                cv_id = profile_model.save_cv(applicant, (cv.filename if cv else "") or "cv.pdf", content)["id"]
+            elif cv_choice == "saved":
+                current = profile_model.current_cv(applicant)
+                if current is None:
+                    raise HTTPException(status_code=422, detail="You have no saved CV; upload one or apply without a CV.")
+                cv_id = current["id"]
+            application_model.create_application(applicant, posting_id, cover_letter.strip() or None, cv_id)
         except HTTPException as error:
             if error.status_code == 404 and error.detail == "Job posting not found":
                 raise
@@ -174,4 +190,9 @@ class JobPostingController:
     def _detail(self, posting_id: int, error: str | None = None) -> str:
         posting = job_posting_model.get_job_posting(posting_id)
         applications = application_model.get_applications(job_posting_id=posting_id)
-        return render_job_posting_detail(posting, user_model.get_users(), applications, error)
+        user = me()
+        # Students and graduates can keep a posting under My account (ddd.md 4.1.6).
+        applicant = bool(user) and user["role"] in APPLICANT_ROLES
+        saved = account_model.is_saved(user["id"], posting_id) if applicant else None
+        cv = profile_model.current_cv(user["id"]) if applicant else None
+        return render_job_posting_detail(posting, user_model.get_users(), applications, error, saved, cv)

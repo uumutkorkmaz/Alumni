@@ -2,6 +2,8 @@ from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app import policy
+from app.models import admin as admin_model
 from app.models import registration as registration_model
 
 
@@ -59,7 +61,11 @@ class ApiRegisterController:
         return registration_model.pending_registrations()
 
     def approve(self, user_id: int) -> dict:
-        return registration_model.approve(user_id)
+        result = registration_model.approve(user_id)
+        admin_model.audit(policy.actor(), "registration_approved", "user", user_id)
+        return result
 
     def reject(self, user_id: int, body: RejectBody) -> dict:
-        return registration_model.reject(user_id, body.reason)
+        result = registration_model.reject(user_id, body.reason)
+        admin_model.audit(policy.actor(), "registration_rejected", "user", user_id, body.reason)
+        return result

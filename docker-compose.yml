@@ -22,6 +22,7 @@ services:
       STUDENT_EMAIL_DOMAIN: ${STUDENT_EMAIL_DOMAIN:-ogr.iu.edu.tr}
       STAFF_EMAIL_DOMAIN: ${STAFF_EMAIL_DOMAIN:-istanbul.edu.tr}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
+      DEV_LOGIN: ${DEV_LOGIN:-0}
 
   db:
     image: postgres:16

@@ -46,6 +46,10 @@ MESSAGES = {
         "This account is waiting for approval.",
     ),
     "rejected": ("Kaydınız reddedildi.", "This registration was rejected."),
+    "suspended": (
+        "Hesabınız bir yönetici tarafından askıya alındı. Bölümle iletişime geçin.",
+        "This account was suspended by an admin.",
+    ),
     "throttled": (
         "Çok fazla hatalı deneme. 15 dakika sonra yeniden deneyin.",
         "Too many wrong passwords. Try again in 15 minutes.",
@@ -88,23 +92,31 @@ def login(email: str, password: str, remember: bool, user_agent: str | None) -> 
         raise LoginError("pending")
     if row["status"] == "rejected":
         raise LoginError("rejected", row["rejection_reason"])
+    if row["status"] == "suspended":
+        raise LoginError("suspended")
 
     _failures.pop(email, None)
+    token, lifetime = open_session(row["id"], remember, user_agent)
+    user = {k: row[k] for k in ("id", "name", "email", "role", "status", "department")}
+    return token, user, lifetime
+
+
+def open_session(user_id: int, remember: bool, user_agent: str | None) -> tuple[str, timedelta]:
+    """A new session for an account whose credentials were checked. Returns (cookie token, lifetime)."""
     token = secrets.token_urlsafe(32)
     lifetime = LONG_SESSION if remember else SHORT_SESSION
     with get_engine().begin() as conn:
         # Old sessions of this user that have expired are removed on the way.
-        conn.execute(text("DELETE FROM sessions WHERE user_id = :id AND expires_at < CURRENT_TIMESTAMP"), {"id": row["id"]})
+        conn.execute(text("DELETE FROM sessions WHERE user_id = :id AND expires_at < CURRENT_TIMESTAMP"), {"id": user_id})
         conn.execute(
             text(
                 "INSERT INTO sessions (user_id, token_hash, expires_at, user_agent) "
                 "VALUES (:id, :hash, CURRENT_TIMESTAMP + make_interval(secs => :secs), :ua)"
             ),
-            {"id": row["id"], "hash": _hash(token), "secs": int(lifetime.total_seconds()), "ua": (user_agent or "")[:200]},
+            {"id": user_id, "hash": _hash(token), "secs": int(lifetime.total_seconds()), "ua": (user_agent or "")[:200]},
         )
-        conn.execute(text("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = :id"), {"id": row["id"]})
-    user = {k: row[k] for k in ("id", "name", "email", "role", "status", "department")}
-    return token, user, lifetime
+        conn.execute(text("UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = :id"), {"id": user_id})
+    return token, lifetime
 
 
 def user_for_token(token: str | None) -> dict | None:

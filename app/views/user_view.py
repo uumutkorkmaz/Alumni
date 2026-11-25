@@ -1,5 +1,6 @@
 from html import escape
 
+from app.models.user import ROLE_LABELS, ROLES
 from app.views.layout import (
     back_link,
     button,
@@ -12,10 +13,26 @@ from app.views.layout import (
     plural,
     render_page,
     row_actions,
+    section_head,
     stat_tiles,
 )
 
 ACTIVE = "/users"
+
+# Students and graduates are the album; academic and administrative staff are listed apart.
+ALBUM_ROLES = ("student", "alumni")
+
+
+def role_badge(role: str) -> str:
+    """A short mono badge with the role's own colour (DESIGN.md §2.4 / Role Badge)."""
+    return f'<span class="badge role role-{role}">{ROLE_LABELS[role]}</span>'
+
+
+def _year_text(user: dict) -> str:
+    if user["graduation_year"] is None:
+        return ""
+    prefix = "Expected" if user["role"] == "student" else "Class of"
+    return f"{prefix} {user['graduation_year']}"
 
 
 def _row(user: dict) -> str:
@@ -25,7 +42,8 @@ def _row(user: dict) -> str:
         f'<td><div class="cell-title"><span class="avatar" aria-hidden="true">{initials(user["name"])}</span>'
         f'<a href="{base}">{escape(user["name"])}</a></div></td>'
         f'<td class="muted">{escape(user["email"])}</td>'
-        f'<td class="date">{user["graduation_year"]}</td><td>{escape(user["department"])}</td>'
+        f'<td>{role_badge(user["role"])}</td>'
+        f'<td class="date">{user["graduation_year"] or "&ndash;"}</td><td>{escape(user["department"])}</td>'
         f'<td class="col-actions">{row_actions(base, "user")}</td></tr>'
     )
 
@@ -57,7 +75,8 @@ def _card(user: dict, i: int) -> str:
         f'<span class="album-tag">#{user["id"]:02d}</span>'
         '<span class="album-caption">'
         f'<span class="album-name">{escape(user["name"])}</span>'
-        f'<span class="album-meta">Class of {user["graduation_year"]} &middot; {escape(user["department"])}</span>'
+        f'<span class="album-meta">{"Student &middot; " if user["role"] == "student" else ""}'
+        f'{_year_text(user)} &middot; {escape(user["department"])}</span>'
         f'<span class="album-mail">{escape(user["email"])}</span>'
         "</span></a>"
         f'<div class="album-actions">{row_actions(base, "user")}</div>'
@@ -67,13 +86,27 @@ def _card(user: dict, i: int) -> str:
 
 def render_user_list(users: list[dict]) -> str:
     rows = "".join(_row(u) for u in users) or (
-        '<tr><td class="empty" colspan="6">No users yet. Add the first one below.</td></tr>'
+        '<tr><td class="empty" colspan="7">No users yet. Add the first one below.</td></tr>'
     )
-    cards = "".join(_card(u, i) for i, u in enumerate(users)) or (
-        '<li class="album-empty">No users yet. Add the first one below.</li>'
+    album_users = [u for u in users if u["role"] in ALBUM_ROLES]
+    others = [u for u in users if u["role"] not in ALBUM_ROLES]
+    cards = "".join(_card(u, i) for i, u in enumerate(album_users)) or (
+        '<li class="album-empty">No students or graduates yet. Add the first one below.</li>'
     )
-    years = sorted({u["graduation_year"] for u in users})
-    span = f"Classes {years[0]}–{years[-1]}" if len(years) > 1 else ""
+    people = "".join(
+        f'<li class="person" data-filter-item><span class="avatar" aria-hidden="true">{initials(u["name"])}</span>'
+        f'<span class="person-text"><a href="/users/{u["id"]}">{escape(u["name"])}</a>'
+        f'<span class="sub">{escape(u["department"])}</span></span>{role_badge(u["role"])}</li>'
+        for u in others
+    )
+    staff_block = (
+        f'{section_head("Faculty and staff", plural(len(others), "person").replace("persons", "people"))}'
+        f'<ul class="people">{people}</ul>'
+        if others
+        else ""
+    )
+    graduates = [u for u in users if u["role"] == "alumni"]
+    years = sorted({u["graduation_year"] for u in graduates})
     views = (
         '<div class="view-switch" data-views role="group" aria-label="View" hidden>'
         '<button type="button" data-view="album" data-target="users-album" aria-pressed="true">Album</button>'
@@ -81,35 +114,35 @@ def render_user_list(users: list[dict]) -> str:
         "</div>"
     )
 
-    departments = {u["department"] for u in users}
     stats = stat_tiles([
-        ("Graduates", len(users), "", ""),
-        ("Classes", f"{years[0]}–{years[-1]}" if years else "&ndash;", "", f"{len(years)} graduating years" if years else ""),
-        ("Departments", len(departments), "", ""),
-        ("Newest class", years[-1] if years else "&ndash;", "", "", False),
-    ], "Graduates in numbers")
+        ("Graduates", len(graduates), "", f"classes {years[0]}–{years[-1]}" if len(years) > 1 else ""),
+        ("Students", sum(1 for u in users if u["role"] == "student"), "", ""),
+        ("Academics", sum(1 for u in users if u["role"] == "academic"), "", ""),
+        ("Staff and admins", sum(1 for u in users if u["role"] in ("staff", "admin")), "", ""),
+    ], "People in numbers")
 
     body = f"""
     {page_hero(
         "Directory &middot; Graduates",
         "The class <em>album</em>",
-        "Every Istanbul University MIS graduate the system keeps, with their class and department. Open a photo to see the graduate; switch to the table to edit many at once.",
+        "Istanbul University MIS students and graduates, with their class and department, and the academic and administrative staff who share opportunities with them. Switch to the table to see everyone with their role.",
         new_button("New user") + button("Applications", "/applications"),
     )}
     {stats}
-    {filter_toolbar("users-album users-table", plural(len(users), "user") + (f" &middot; {span}" if span else ""), views)}
+    {filter_toolbar("users-album users-table", plural(len(users), "user"), views)}
     <section class="album-band" id="users-album" aria-label="Class album">
       <p class="album-display" aria-hidden="true">Graduates</p>
       <ul class="album">{cards}</ul>
+      {staff_block}
     </section>
     <div class="table-wrap" id="users-table-wrap" hidden>
       <table id="users-table">
-        <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Class of</th><th>Department</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Year</th><th>Department</th><th></th></tr></thead>
         <tbody>{rows}</tbody>
       </table>
     </div>
 
-    {form_card("Add user", _user_form(action="/users"), "All fields required")}
+    {form_card("Add user", _user_form(action="/users"), "Year required for students and graduates")}
     """
     return render_page("Users", body, ACTIVE)
 
@@ -117,7 +150,7 @@ def render_user_list(users: list[dict]) -> str:
 def render_user_detail(user: dict) -> str:
     body = f"""
     {page_hero(
-        f"User #{user['id']} &middot; Class of {user['graduation_year']}",
+        f"User #{user['id']} &middot; {ROLE_LABELS[user['role']]}" + (f" &middot; {_year_text(user)}" if user['graduation_year'] else ""),
         escape(user['name']),
         escape(user['department']),
         button("Edit", f"/users/{user['id']}/edit", "primary") + button("Applications", "/applications"),
@@ -126,7 +159,8 @@ def render_user_detail(user: dict) -> str:
     <section class="card card-featured" data-reveal>
       <dl class="dl">
         <dt>Email</dt><dd><a href="mailto:{escape(user['email'])}">{escape(user['email'])}</a></dd>
-        <dt>Graduation year</dt><dd class="mono">{user['graduation_year']}</dd>
+        <dt>Role</dt><dd>{role_badge(user['role'])}</dd>
+        <dt>{"Expected graduation" if user['role'] == "student" else "Graduation year"}</dt><dd class="mono">{user['graduation_year'] or "&ndash;"}</dd>
         <dt>Department</dt><dd>{escape(user['department'])}</dd>
       </dl>
     </section>
@@ -152,6 +186,10 @@ def _user_form(action: str, user: dict | None = None) -> str:
     def value(key: str) -> str:
         return escape(str(u.get(key, "")))
 
+    current = u.get("role", "alumni")
+    role_options = "".join(
+        f'<option value="{r}"{" selected" if r == current else ""}>{ROLE_LABELS[r]}</option>' for r in ROLES
+    )
     submit_label = "Save changes" if user else "Create user"
     cancel = f'<a class="btn btn-ghost" href="/users/{u["id"]}">Cancel</a>' if user else ""
     return f"""
@@ -160,8 +198,10 @@ def _user_form(action: str, user: dict | None = None) -> str:
         <input id="name" type="text" name="name" value="{value('name')}" maxlength="100" required autocomplete="name" /></div>
       <div class="field"><label for="email">Email</label>
         <input id="email" type="email" name="email" value="{value('email')}" maxlength="255" required autocomplete="email" /></div>
-      <div class="field"><label for="graduation_year">Graduation year</label>
-        <input id="graduation_year" type="number" name="graduation_year" value="{value('graduation_year')}" min="1950" max="2100" required /></div>
+      <div class="field"><label for="role">Role</label>
+        <select id="role" name="role" required>{role_options}</select></div>
+      <div class="field"><label for="graduation_year">Graduation year (required for students and graduates)</label>
+        <input id="graduation_year" type="number" name="graduation_year" value="{value('graduation_year') if u.get('graduation_year') else ''}" min="1950" max="2100" /></div>
       <div class="field"><label for="department">Department</label>
         <input id="department" type="text" name="department" value="{value('department')}" maxlength="100" required /></div>
       <div class="form-actions"><button type="submit" class="btn btn-primary">{submit_label}</button>{cancel}</div>

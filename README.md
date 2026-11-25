@@ -134,7 +134,7 @@ HTML forms can only send GET and POST, so update and delete use POST sub-routes;
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/users` | Graduates as a class album of photo cards (or a table, one click away) + create form (`User` tag in Swagger) |
+| GET | `/users` | Students and graduates as a class album of photo cards, academic and administrative staff listed under it (or everyone in a table with their role, one click away) + create form with the role (`User` tag in Swagger) |
 | POST | `/users` | Create a user (form submit) |
 | GET | `/users/{id}` | User detail page |
 | GET | `/users/{id}/edit` | Edit form |
@@ -164,9 +164,9 @@ Every page shares one navbar (Home, About, Users, Announcements, Job Postings, A
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/api/users` | List all users (`ApiUser` tag in Swagger) |
+| GET | `/api/users` | List all users (`ApiUser` tag in Swagger); `?role=student\|alumni\|academic\|staff\|admin` keeps one role |
 | GET | `/api/users/{id}` | Get a single user |
-| POST | `/api/users` | Create a new user |
+| POST | `/api/users` | Create a new user (`role` defaults to `alumni`; students and graduates need a `graduation_year`, [ddd.md 4.1.1](ddd.md#411-roles-and-permissions)) |
 | PUT | `/api/users/{id}` | Replace a user (all fields required) |
 | PATCH | `/api/users/{id}` | Partially update a user |
 | DELETE | `/api/users/{id}` | Delete a user |
@@ -415,3 +415,12 @@ The system is built incrementally, one task (and one commit) at a time, followin
 ## Status
 
 Work in progress: built incrementally week by week.
+
+### Decided, not built yet
+
+| Item | State |
+| --- | --- |
+| **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) | **Built**: migration `0005`, role rules in the models (who may publish, post, apply), role badges and lists on the pages ([ddd.md §4.1.1](ddd.md#411-roles-and-permissions)). The permission table (who may do what) waits for the login. |
+| **Registration** | Planned for the register task: students sign up with their student email, academic and administrative staff with an `@istanbul.edu.tr` address, graduates with any email; everyone uploads a document (student certificate, graduation document, staff ID) and an admin approves the account before it can use the site. |
+| **Email verification** (confirmation link) | **Deferred to a later task** by decision: the first version of registration does not send a confirmation email. |
+| **Login, sessions and permission checks** | A later task; the permission table in ddd.md §4.1.1 is enforced then. |

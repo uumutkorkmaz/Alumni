@@ -4,14 +4,14 @@ from faker import Faker
 from sqlalchemy import text
 
 from app.database.connection import get_engine
-from app.database.factories import AnnouncementFactory, JobPostingFactory, UserFactory
+from app.database.factories import AnnouncementFactory, JobPostingFactory, UserFactory, staff_accounts
 
 INSERT_USER = text(
-    "INSERT INTO users (name, email, graduation_year, department) "
-    "VALUES (:name, :email, :graduation_year, :department)"
+    "INSERT INTO users (name, email, role, graduation_year, department) "
+    "VALUES (:name, :email, :role, :graduation_year, :department) ON CONFLICT (email) DO NOTHING"
 )
 INSERT_ANNOUNCEMENT = text(
-    "INSERT INTO announcements (title, content, author) VALUES (:title, :content, :author)"
+    "INSERT INTO announcements (title, content, author_id) VALUES (:title, :content, :author_id)"
 )
 INSERT_JOB_POSTING = text(
     "INSERT INTO job_postings (title, company, city, employment_type, description, "
@@ -34,13 +34,21 @@ def seed(users: int, announcements: int, job_postings: int, fresh: bool, seed_va
             conn.execute(text("TRUNCATE users, announcements, job_postings, applications RESTART IDENTITY"))
             print("Cleared users, announcements, job_postings and applications.")
 
+        # The offices that publish announcements always exist (skipped if they are already there).
+        conn.execute(INSERT_USER, staff_accounts())
         if users:
             conn.execute(INSERT_USER, UserFactory(fake).make_many(users))
         if announcements:
-            conn.execute(INSERT_ANNOUNCEMENT, AnnouncementFactory(fake).make_many(announcements))
+            # Only academic, staff and admin accounts publish (ddd.md 4.1.1).
+            author_ids = list(conn.execute(
+                text("SELECT id FROM users WHERE role IN ('academic', 'staff', 'admin') ORDER BY id")
+            ).scalars())
+            conn.execute(INSERT_ANNOUNCEMENT, AnnouncementFactory(fake, author_ids).make_many(announcements))
         if job_postings:
-            # Job postings point to users, so users must exist first; they are picked from the table.
-            user_ids = list(conn.execute(text("SELECT id FROM users ORDER BY id")).scalars())
+            # Job postings point to users, so users must exist first; students do not post.
+            user_ids = list(conn.execute(
+                text("SELECT id FROM users WHERE role <> 'student' ORDER BY id")
+            ).scalars())
             conn.execute(INSERT_JOB_POSTING, JobPostingFactory(fake, user_ids).make_many(job_postings))
 
         totals = {

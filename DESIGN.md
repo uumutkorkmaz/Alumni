@@ -419,6 +419,10 @@ Inside a card-shaped wrapper (14 px radius, 1 px Hairline, scrolls sideways on s
 **Role:** a short state word.
 Fully round, 3 × 10 px padding, IBM Plex Mono badge size, colours from §2.4. Never more than two words.
 
+### Role Badge
+**Role:** a user's role (ddd.md §4.1.1) in the users table, on a profile and in the Faculty and staff list.
+The Status Badge, one colour per role from the same palette: **Student** Navy Tint on Registry Navy, **Graduate** Green Tint on Forest, **Academic** Gold Tint on gold at 12 %, **Staff** Paper Text on Raised Panel, **Admin** Soft Red on red at 10 %. Under the album, academic and administrative staff are plain name cards (avatar, name, department, role badge) in a `repeat(auto-fill, minmax(260px, 1fr))` grid; the album photos stay for students and graduates.
+
 ### Form Field
 **Role:** text, number, date, select, text area.
 Label above in Inter 500 13 px Archive Gray. Field on Inset Field, 1 px Hairline, 10 px radius, 10 × 12 px padding, Paper Text 14 px. Focus: border İÜ Green and a 3 px ring `rgba(67,156,134,.22)`. Required fields are marked in the label, not by colour alone. Forms are two columns on wide screens, one below 720 px.

@@ -144,10 +144,12 @@ def _to_dict(posting: JobPosting) -> dict:
 
 
 def _require_user(session: Session, user_id: int) -> None:
-    from app.models.user import User
+    """The poster must exist (404) and may not be a student (422): ddd.md section 4.1.1."""
+    from app.models.user import POSTER_ROLES, User, require_role
 
     if session.get(User, user_id) is None:
         raise HTTPException(status_code=404, detail="User not found")
+    require_role(user_id, POSTER_ROLES, "open a job posting")
 
 
 def _find(session: Session, posting_id: int, user_id: int | None = None) -> JobPosting:

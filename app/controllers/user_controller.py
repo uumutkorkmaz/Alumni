@@ -7,6 +7,16 @@ from app.models.user import UserCreate, UserUpdate
 from app.views.user_view import render_user_detail, render_user_edit_form, render_user_list
 
 
+def _year(value: str) -> int | None:
+    """The year field of the form: empty means no year (allowed for academic, staff and admin)."""
+    value = value.strip()
+    if not value:
+        return None
+    if not value.isdigit():
+        raise HTTPException(status_code=422, detail="graduation_year must be a whole number")
+    return int(value)
+
+
 class UserController:
     """Independent controller: full CRUD for users under /users, managed through the HTML view layer."""
 
@@ -28,13 +38,14 @@ class UserController:
         self,
         name: str = Form(...),
         email: str = Form(...),
-        graduation_year: int = Form(...),
+        role: str = Form("alumni"),
+        graduation_year: str = Form(""),
         department: str = Form(...),
     ) -> RedirectResponse:
         """POST /users -> creating (C): creates the user then redirects back to the listing."""
         try:
             data = UserCreate(
-                name=name, email=email, graduation_year=graduation_year, department=department
+                name=name, email=email, role=role, graduation_year=_year(graduation_year), department=department
             )
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
@@ -56,14 +67,15 @@ class UserController:
         user_id: int,
         name: str = Form(...),
         email: str = Form(...),
-        graduation_year: int = Form(...),
+        role: str = Form(...),
+        graduation_year: str = Form(""),
         department: str = Form(...),
     ) -> RedirectResponse:
         """POST /users/{id}/edit -> updating (U): HTML forms can't send PUT/PATCH,
         so the edit form submits here instead; redirects back to the detail page."""
         try:
             data = UserUpdate(
-                name=name, email=email, graduation_year=graduation_year, department=department
+                name=name, email=email, role=role, graduation_year=_year(graduation_year), department=department
             )
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))

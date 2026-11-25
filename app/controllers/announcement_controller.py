@@ -3,12 +3,19 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
 from app.models import announcement as announcement_model
+from app.models import user as user_model
+from app.models.user import AUTHOR_ROLES
 from app.models.announcement import AnnouncementCreate, AnnouncementUpdate
 from app.views.announcement_view import (
     render_announcement_detail,
     render_announcement_edit_form,
     render_announcement_list,
 )
+
+
+def _authors() -> list[dict]:
+    """The accounts that may publish (academic, staff, admin), for the author list of the forms."""
+    return [u for u in user_model.get_users() if u["role"] in AUTHOR_ROLES]
 
 
 class AnnouncementController:
@@ -24,16 +31,18 @@ class AnnouncementController:
         self.router.add_api_route("/{announcement_id}/delete", self.delete, methods=["POST"])
 
     def list(self) -> HTMLResponse:
-        return HTMLResponse(render_announcement_list(announcement_model.get_announcements()))
+        return HTMLResponse(
+            render_announcement_list(announcement_model.get_announcements(), _authors())
+        )
 
     def create(
         self,
         title: str = Form(...),
         content: str = Form(...),
-        author: str = Form(...),
+        author_id: int = Form(...),
     ) -> RedirectResponse:
         try:
-            data = AnnouncementCreate(title=title, content=content, author=author)
+            data = AnnouncementCreate(title=title, content=content, author_id=author_id)
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         announcement_model.create_announcement(data)
@@ -45,7 +54,7 @@ class AnnouncementController:
 
     def edit_form(self, announcement_id: int) -> HTMLResponse:
         announcement = announcement_model.get_announcement(announcement_id)
-        return HTMLResponse(render_announcement_edit_form(announcement))
+        return HTMLResponse(render_announcement_edit_form(announcement, _authors()))
 
     # HTML forms can only send GET/POST, so update and delete use POST sub-routes.
     def update(
@@ -53,10 +62,10 @@ class AnnouncementController:
         announcement_id: int,
         title: str = Form(...),
         content: str = Form(...),
-        author: str = Form(...),
+        author_id: int = Form(...),
     ) -> RedirectResponse:
         try:
-            data = AnnouncementUpdate(title=title, content=content, author=author)
+            data = AnnouncementUpdate(title=title, content=content, author_id=author_id)
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         announcement_model.partial_update_announcement(announcement_id, data)

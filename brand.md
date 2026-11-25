@@ -191,6 +191,7 @@ Every page is built by `render_page` in `app/views/layout.py`: the same navbar, 
 | Small button | `.btn-sm` | Inside table rows. |
 | Navbar link | `.nav-links a` | `--muted`; hover `--text` on `--panel`; the active page `--text` with a 2 px gold underline that slides in from the left. |
 | Badge | `.badge` (+ status class) | Short status words with the colours of section 4.3. |
+| Role badge | `.badge.role-<role>` | A user's role: student (navy), graduate (green), academic (gold), staff (neutral), admin (soft red); see DESIGN.md §4. |
 | Alert | `.alert .alert-error` | Text `#f3d9d6` on `#2a1714`, border `--danger` at 40 %: a refused action at the top of the page, the reason in plain words. |
 | Card | `.card` | Groups one form, one detail or one list. A featured card may have the brand gradient as a 3 px top edge. |
 | Table | `.table-wrap` + `table` | Lists; a filter box above, the actions on the right of each row; a selected or hovered row gets a `--forest` tint. |

@@ -1,6 +1,7 @@
 from html import escape
 
 from app.views.job_posting_view import is_open
+from app.models.user import APPLICANT_ROLES
 from app.views.layout import (
     alert,
     button,
@@ -84,7 +85,12 @@ def render_application_list(
         '<tr><td class="empty" colspan="8">No applications yet. Create the first one below.</td></tr>'
     )
 
-    user_options = "".join(f'<option value="{u["id"]}">{escape(u["name"])} (#{u["id"]})</option>' for u in users)
+    # Only students and graduates apply (ddd.md section 4.1.1).
+    user_options = "".join(
+        f'<option value="{u["id"]}">{escape(u["name"])} (#{u["id"]})</option>'
+        for u in users
+        if u["role"] in APPLICANT_ROLES
+    )
     posting_options = "".join(
         f'<option value="{p["id"]}">{escape(p["title"])} - {escape(p["company"])}'
         f'{"" if is_open(p) else " (closed)"}</option>'

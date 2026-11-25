@@ -4,7 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database.connection import get_engine
 
 COUNTS_SQL = text(
-    "SELECT (SELECT COUNT(*) FROM users) AS users, "
+    "SELECT (SELECT COUNT(*) FROM users WHERE role = 'alumni') AS users, "
     "(SELECT COUNT(*) FROM announcements) AS announcements, "
     "(SELECT COUNT(*) FROM job_postings) AS job_postings, "
     "(SELECT COUNT(*) FROM job_postings "
@@ -19,8 +19,11 @@ OPEN_POSTINGS_SQL = text(
     "ORDER BY created_at DESC, id DESC LIMIT :limit"
 )
 
+# The author is a user now (ddd.md 4.1.1); an announcement whose author account is gone shows "Department".
 LATEST_ANNOUNCEMENTS_SQL = text(
-    "SELECT id, title, author, created_at FROM announcements ORDER BY created_at DESC, id DESC LIMIT :limit"
+    "SELECT a.id, a.title, COALESCE(u.name, 'Department') AS author, a.created_at "
+    "FROM announcements a LEFT JOIN users u ON u.id = a.author_id "
+    "ORDER BY a.created_at DESC, a.id DESC LIMIT :limit"
 )
 
 

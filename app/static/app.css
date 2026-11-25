@@ -377,6 +377,12 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
 .badge.off, .badge.s-rejected, .badge.s-withdrawn { color: var(--danger-soft); border-color: rgba(220, 53, 69, 0.3); background: rgba(220, 53, 69, 0.10); }
 .badge.s-submitted, .badge.s-under_review, .badge.info { color: var(--navy-light); border-color: rgba(134, 174, 214, 0.25); background: rgba(26, 58, 90, 0.35); }
 .badge.s-interview { color: var(--gold-light); border-color: rgba(184, 134, 11, 0.35); background: rgba(184, 134, 11, 0.12); }
+/* Role badges (ddd.md section 4.1.1): one colour per role, from the status palette */
+.badge.role-student { color: var(--navy-light); border-color: rgba(134, 174, 214, 0.25); background: rgba(26, 58, 90, 0.35); }
+.badge.role-alumni { color: var(--primary-light); border-color: rgba(67, 156, 134, 0.35); background: rgba(0, 106, 78, 0.18); }
+.badge.role-academic { color: var(--gold-light); border-color: rgba(184, 134, 11, 0.35); background: rgba(184, 134, 11, 0.12); }
+.badge.role-staff { color: var(--text); border-color: var(--border); background: var(--panel-2); }
+.badge.role-admin { color: var(--danger-soft); border-color: rgba(220, 53, 69, 0.3); background: rgba(220, 53, 69, 0.10); }
 .alert {
   padding: 12px 16px;
   border-radius: var(--radius-control);
@@ -835,6 +841,13 @@ a.stat:hover { transform: translateY(-2px); border-color: rgba(67, 156, 134, 0.4
 @media (hover: none) {
   .album-actions { position: static; opacity: 1; transform: none; padding: 8px 0 0; display: flex; justify-content: flex-end; }
 }
+/* Faculty and staff under the album: a plain list of name cards with role badges */
+.people { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.person { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.person-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.person-text a { font-weight: 600; color: var(--text); }
+.person-text a:hover { color: var(--primary-light); }
+.album-band .section-head { margin-top: 8px; }
 .album-empty { grid-column: 1 / -1; padding: 48px 16px; text-align: center; color: var(--muted); }
 @media (max-width: 720px) {
   .toolbar-right, .toolbar-right .filter { width: 100%; }

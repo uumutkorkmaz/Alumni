@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 from app.database.connection import get_engine
 from app.models.base import Base
 from app.models.job_posting import JobPosting
-from app.models.user import User
+from app.models.user import APPLICANT_ROLES, User, require_role
 
 ApplicationStatus = Literal["submitted", "under_review", "interview", "accepted", "rejected", "withdrawn"]
 
@@ -120,6 +120,8 @@ def _find(session: Session, application_id: int, user_id: int | None, job_postin
 def create_application(user_id: int, job_posting_id: int, cover_letter: str | None) -> dict:
     with Session(get_engine()) as session:
         _require_user(session, user_id)
+        # Only students and graduates apply (ddd.md section 4.1.1).
+        require_role(user_id, APPLICANT_ROLES, "apply to a job posting")
         posting = _require_posting(session, job_posting_id)
         if not posting.is_active or (posting.deadline is not None and posting.deadline < date.today()):
             raise HTTPException(status_code=409, detail="This job posting is closed")

@@ -4,7 +4,7 @@
 
 This document describes the database design of the Alumni Tracking System. The tables below are created by the migrations in [section 7](#7-migrations), and the app reads and writes them through the models in `app/models/` (see [section 8](#8-from-in-memory-models-to-tables)).
 
-> **Status:** all four tables (`users`, `announcements`, `job_postings`, `applications`) exist in the database: migrations `0001` to `0004` have been applied (`alembic current` shows `0004 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first. The validation rules for job postings are in [section 4.3.1](#431-validation-rules-for-a-job-posting).
+> **Status:** all four tables (`users`, `announcements`, `job_postings`, `applications`) exist in the database: migrations `0001` to `0005` have been applied (`alembic current` shows `0005 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first. The validation rules for job postings are in [section 4.3.1](#431-validation-rules-for-a-job-posting). **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) and the announcement author as a user are **applied** by migration `0005` ([section 4.1.1](#411-roles-and-permissions)); the permission table there waits for the login of a later task.
 
 ## 1. Why a Database
 
@@ -33,7 +33,7 @@ Restarting the container wiped the Python process's memory, so all data was lost
 
 The system has four entities:
 
-- **User**: an MIS graduate (alumnus/alumna) tracked by the system.
+- **User**: a person in the system. Until now always an MIS graduate (alumnus/alumna); with roles (section 4.1.1, planned) a user is a `student`, a graduate (`alumni`), an `academic`, administrative `staff` or an `admin`, and the role decides what they may do.
 - **Announcement**: a news item or notice published to graduates (e.g. a graduation ceremony, an event).
 - **Job Posting**: a job or internship offer shared with graduates, optionally posted by a registered user (e.g. an alumnus hiring at their company).
 - **Application**: a graduate's application to one job posting. It links a user and a job posting and carries its own data (status, cover letter).
@@ -47,10 +47,170 @@ The system has four entities:
 | `id` | `SERIAL` | `PRIMARY KEY` | Auto-incremented identifier. |
 | `name` | `VARCHAR(100)` | `NOT NULL` | Full name of the graduate. |
 | `email` | `VARCHAR(255)` | `NOT NULL`, `UNIQUE` | Contact email. Unique so the same person cannot be registered twice. |
-| `graduation_year` | `INTEGER` | `NOT NULL`, `CHECK (graduation_year BETWEEN 1950 AND 2100)` | Year of graduation. |
-| `department` | `VARCHAR(100)` | `NOT NULL` | Department graduated from. |
+| `role` | `VARCHAR(20)` | `NOT NULL`, `DEFAULT 'alumni'`, `CHECK (role IN ('student', 'alumni', 'academic', 'staff', 'admin'))` | What the person is in the system (section 4.1.1). |
+| `graduation_year` | `INTEGER` | nullable, `CHECK (graduation_year BETWEEN 1950 AND 2100)`; required for `student` and `alumni` (see below) | Year of graduation; the expected year for a student. Empty for academic and administrative staff who are not counted as graduates. |
+| `department` | `VARCHAR(100)` | `NOT NULL` | Department graduated from, studying in, or working in. |
 | `created_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | When the record was created. |
 | `updated_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | When the record was last changed. |
+
+| Constraint / Index | Rule | Reason |
+| --- | --- | --- |
+| `ck_users_role` | `role IN ('student', 'alumni', 'academic', 'staff', 'admin')` | Only the five roles of section 4.1.1. |
+| `ck_users_graduation_year_by_role` | `role NOT IN ('student', 'alumni') OR graduation_year IS NOT NULL` | Students and graduates must have a year; the others may leave it empty. |
+| `ix_users_role` | `role` | Lists filtered by role (`/api/users?role=staff`, the album of students and graduates). |
+
+#### 4.1.1 Roles and permissions
+
+> **Status:** applied. The task was given in class: *"Update ddd.md for users and their roles in the system."* The roles were decided here first (design first, as with the job posting rules in section 4.3.1); migration `0005` then changed the tables, and the models, the API, the pages and the seed follow them. The data rules at the end of this section are enforced; the permissions in Table 2 (who may do what) wait for the login that a later task adds.
+
+Until now every row of `users` was a graduate. The system has other people too: students looking for an internship, academics sharing a project position, the department office publishing announcements, and someone who runs the system. Each user gets **one role**.
+
+**Table 1: Roles**
+
+| Role | Who | `graduation_year` | Note |
+| --- | --- | --- | --- |
+| `student` | A current MIS student, looking for an internship or a first job | **Required** (expected year) | Becomes `alumni` after graduation |
+| `alumni` | An MIS graduate | **Required** | The default role; the 21 existing users get it |
+| `academic` | Academic staff: professors, research assistants | Optional | Manages their own postings and announcements |
+| `staff` | Administrative staff: department office, career centre, dean's office, alumni association | Optional | Runs the system: users, all applications |
+| `admin` | The person who runs the system | Optional | The only role that can give roles |
+
+**Why one role per user (a column), not a `roles` table:** every permission below depends on a single role, so one value answers "may this user do this?"; a graduate who works in the department becomes `staff` and keeps their graduation year. A separate `roles` table with a join table (many roles per user) would only be needed if one person had to hold two roles with different rights at the same time, which the system does not need. The column also follows the pattern already used for `job_postings.employment_type` and `applications.status`: a short `VARCHAR` limited by a `CHECK`.
+
+**Why `academic` is not `staff`:** both work for the department, but they do different things in the system. Administrative staff run it (add users, manage every application); academics only share their own opportunities (a TÜBİTAK project position, an assistantship, an internship, a seminar). Counting academics as `staff` would let them change applications to another academic's posting or edit user records; a separate role keeps them to *their own* postings and announcements.
+
+**Table 2: Permissions**
+
+✓ = allowed · **own** = only their own record · ✗ = not allowed
+
+| Action | `student` | `alumni` | `academic` | `staff` | `admin` |
+| --- | :-: | :-: | :-: | :-: | :-: |
+| **Users** | | | | | |
+| See the graduate album and the user list | ✓ | ✓ | ✓ | ✓ | ✓ |
+| See other users' email addresses | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Edit their own profile | own | own | own | own | ✓ |
+| Add a user | ✗ | ✗ | ✗ | ✓ (students and graduates) | ✓ |
+| Edit another user | ✗ | ✗ | ✗ | ✓ (students and graduates) | ✓ |
+| Delete a user | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Give or change a role | ✗ | ✗ | ✗ | ✗ | ✓ |
+| **Announcements** | | | | | |
+| Read announcements | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Publish an announcement | ✗ | ✗ | ✓ (course, seminar, research) | ✓ | ✓ |
+| Edit or delete an announcement | ✗ | ✗ | own | own | ✓ |
+| **Job postings** | | | | | |
+| See job postings | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Open a job posting | ✗ | ✓ (for their company) | ✓ (project, assistantship, internship) | ✓ (for the department) | ✓ |
+| Edit, close or delete a job posting | ✗ | own | own | ✓ | ✓ |
+| **Applications** | | | | | |
+| Apply to a job posting | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Withdraw their application (`withdrawn`) | own | own | ✗ | ✗ | ✗ |
+| See applications | own | own + those to their postings | those to their postings | ✓ | ✓ |
+| Change an application's status (review, interview, accepted, rejected) | ✗ | those to their postings | those to their postings | ✓ | ✓ |
+| Delete an application | ✗ | ✗ | ✗ | ✗ | ✓ |
+
+Reasons: a **student** does not open postings (they are on the job-seeking side); **academic**, **staff** and **admin** do not apply (they are not looking for a job in this system); a **graduate** who opens a posting is the employer for it, so they manage the applications it receives; **deleting users and giving roles** cannot be undone or changes rights, so only `admin` does it. **Academics** see email addresses because contacting students and graduates (projects, references, internships) is part of their work.
+
+**Change to `users`** (migration `0005`, applied):
+
+| Column / constraint | Before `0005` | After `0005` |
+| --- | --- | --- |
+| `role` | (none) | `VARCHAR(20) NOT NULL DEFAULT 'alumni'`, `CHECK (role IN ('student', 'alumni', 'academic', 'staff', 'admin'))` (`ck_users_role`) |
+| `graduation_year` | `NOT NULL` | Nullable; the `BETWEEN 1950 AND 2100` check stays |
+| `ck_users_graduation_year_by_role` | (none) | `CHECK (role NOT IN ('student', 'alumni') OR graduation_year IS NOT NULL)`: students and graduates must have a year, the others may leave it empty |
+| `ix_users_role` | (none) | Index on `role`, for lists filtered by role (`?role=staff`, the album shows graduates) |
+
+Every existing user becomes `alumni` through the default, and every one of them has a graduation year, so both checks pass and no row changes otherwise.
+
+**Announcement author: `author` becomes `author_id`** (closes the open decision in section 5)
+
+Until `0005` the author of an announcement was free text typed into a box (`announcements.author`, e.g. "Department Office"). That had three problems:
+
+1. **Roles cannot be checked:** anyone could type "Dean's Office" and publish; the system does not know who the author is.
+2. **Inconsistent values:** the same office can be written as "Department Office", "Department office" or "Bölüm Sekreterliği".
+3. **No link:** "all announcements of the career centre" cannot be queried reliably.
+
+Decision (applied by `0005`): the announcement stores **who published it**, as a user: `author_id INTEGER REFERENCES users(id) ON DELETE SET NULL`. The author must have the role `academic`, `staff` or `admin`.
+
+- Migration `0005` creates one `staff` user for each author name already in the table ("Department Office", "Career Center", "Dean's Office", "Alumni Association"), links the existing announcements to them, then drops the `author` text column. The pages still show "By Department Office": the name now comes from the user.
+- `ON DELETE SET NULL`, as for `job_postings.posted_by_user_id`: deleting an account keeps its announcements (they are still useful) and the page shows them as "Department".
+- `author_id` is nullable only for that case; a new announcement always has an author.
+- Index `ix_announcements_author_id`, because PostgreSQL does not index foreign keys automatically.
+- `downgrade()` puts the `author` text back, filled from the users' names, and drops `author_id`.
+
+**Schema after `0005`** (only the changed tables; the full diagram is in section 5):
+
+```mermaid
+erDiagram
+    USERS {
+        int id PK
+        varchar name
+        varchar email UK
+        varchar role "student | alumni | academic | staff | admin"
+        int graduation_year "required for student and alumni"
+        varchar department
+        timestamp created_at
+        timestamp updated_at
+    }
+    ANNOUNCEMENTS {
+        int id PK
+        varchar title
+        text content
+        int author_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    USERS |o--o{ ANNOUNCEMENTS : "publishes"
+    USERS |o--o{ JOB_POSTINGS : "posts"
+    USERS ||--o{ APPLICATIONS : "applies"
+```
+
+```sql
+CREATE TABLE users (
+    id              SERIAL PRIMARY KEY,
+    name            VARCHAR(100) NOT NULL,
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    role            VARCHAR(20)  NOT NULL DEFAULT 'alumni',
+    graduation_year INTEGER      CHECK (graduation_year BETWEEN 1950 AND 2100),
+    department      VARCHAR(100) NOT NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_users_role
+        CHECK (role IN ('student', 'alumni', 'academic', 'staff', 'admin')),
+    CONSTRAINT ck_users_graduation_year_by_role
+        CHECK (role NOT IN ('student', 'alumni') OR graduation_year IS NOT NULL)
+);
+
+CREATE INDEX ix_users_role ON users (role);
+
+CREATE TABLE announcements (
+    id         SERIAL PRIMARY KEY,
+    title      VARCHAR(200) NOT NULL,
+    content    TEXT         NOT NULL,
+    author_id  INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX ix_announcements_author_id ON announcements (author_id);
+```
+
+**Where each rule lives**
+
+| Rule | Where | State |
+| --- | --- | --- |
+| `role` is one of the five values; students and graduates have a year | Database (`CHECK`) and the user model (`UserCreate`; a PATCH is checked on the user as it will be) | Applied; refused with **422** |
+| An announcement's author is `academic`, `staff` or `admin` | `require_role()` in the user model, called by the announcement model (a `CHECK` cannot look into another table) | Applied; refused with **422**, a missing author with **404** |
+| A job posting's poster is not a `student` | Job posting model | Applied; refused with **422** |
+| An applicant is a `student` or `alumni` | Application model | Applied; refused with **422** |
+| Table 2 ("who may do what": own records, deleting, giving roles) | The login and permission checks | A later task (login is not part of this one) |
+
+The refusals read like *"A staff member cannot apply to a job posting (allowed: student, graduate)"*. The pages offer only the accounts that fit: the author list of the announcement form shows academic, staff and admin accounts; the applicant lists show students and graduates; the "posted by" list leaves students out.
+
+Tested on a temporary database before the real one: upgrade from `0004` with old-style rows (the three author names became three `staff` accounts and every announcement was linked to the right one), the two `CHECK`s refusing a student without a year and an unknown role, seeding on top (no duplicate office accounts), `downgrade` back to `0004` (author text restored, the office accounts removed) and `upgrade` again; `alembic check` reports no difference. Then the real database was upgraded: the 21 users became `alumni`, four office accounts were created and the ten announcements kept their authors. Through the API: a student without a year, an academic turned into a graduate without a year, an announcement by a graduate, a posting by a student and an application by staff were all refused with 422; the allowed versions were accepted.
+
+The first four rules depend only on the data (the role of the user named in the request), so they can be enforced as soon as the column exists. Table 2 depends on *who is signed in*, which needs the login that a later task adds.
+
+**How people get their role (registration, next task).** Decided for the first version: students register with their student email address, academic and administrative staff with an `@istanbul.edu.tr` address, graduates with any address; every new account uploads a document and stays pending until an `admin` approves it. **Email verification (a confirmation link) is deferred to a later task.** The registration columns and tables will be designed here, in a new section, before migration `0006` adds them.
 
 ### 4.2 `announcements`
 
@@ -59,7 +219,7 @@ The system has four entities:
 | `id` | `SERIAL` | `PRIMARY KEY` | Auto-incremented identifier. |
 | `title` | `VARCHAR(200)` | `NOT NULL` | Headline of the announcement. |
 | `content` | `TEXT` | `NOT NULL` | Body text, no length limit. |
-| `author` | `VARCHAR(100)` | `NOT NULL` | Who published it (e.g. "Department Office"). |
+| `author_id` | `INTEGER` | `REFERENCES users(id) ON DELETE SET NULL`, indexed (`ix_announcements_author_id`) | Who published it: an `academic`, `staff` or `admin` account (section 4.1.1). Pages show the account's name ("By Department Office"); an announcement whose author account was deleted shows "Department". Replaced the free-text `author` in migration `0005`. |
 | `created_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | When the announcement was published. |
 | `updated_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | When it was last edited. |
 
@@ -160,6 +320,7 @@ erDiagram
         int id PK
         varchar name
         varchar email UK
+        varchar role
         int graduation_year
         varchar department
         timestamp created_at
@@ -169,7 +330,7 @@ erDiagram
         int id PK
         varchar title
         text content
-        varchar author
+        int author_id FK
         timestamp created_at
         timestamp updated_at
     }
@@ -196,6 +357,7 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    USERS |o--o{ ANNOUNCEMENTS : "publishes"
     USERS |o--o{ JOB_POSTINGS : "posts"
     USERS ||--o{ APPLICATIONS : "applies"
     JOB_POSTINGS ||--o{ APPLICATIONS : "receives"
@@ -214,9 +376,10 @@ erDiagram
 - Both use `ON DELETE CASCADE`: if a user is deleted, their applications go with them (personal data of a person who left); if a posting is deleted, applications to it go with it (they point to nothing). This differs from `job_postings.posted_by_user_id`, which uses `SET NULL`, because a posting is still useful without its poster, but an application is not useful without either side.
 - `UNIQUE (user_id, job_posting_id)`: the same graduate cannot apply twice to the same posting.
 
-**`announcements`** stays independent: there is no foreign key to it. Announcements are published by the department, not by graduates, so `author` stays a free-text field rather than a reference to `users`.
+**`users` → `announcements` (one-to-many, optional):** one account publishes many announcements; each announcement has at most one author. The link is `announcements.author_id → users.id`, and the author must be `academic`, `staff` or `admin` (checked by the model, section 4.1.1).
 
-**Open decision:** if announcements later need to be posted by registered accounts (e.g. admins), `author` should become `author_id INTEGER REFERENCES users(id)`, giving a one-to-many relationship (one user writes many announcements).
+- It was a free-text `author` until migration `0005` (the "open decision" of earlier versions of this document); `0005` turned each author name into a `staff` account and linked the announcements to it.
+- `ON DELETE SET NULL`, as for `job_postings.posted_by_user_id`: deleting an account keeps its announcements, which are still useful; the pages then show "Department" as the author.
 
 ## 6. SQL Equivalent
 
@@ -225,20 +388,29 @@ CREATE TABLE users (
     id              SERIAL PRIMARY KEY,
     name            VARCHAR(100) NOT NULL,
     email           VARCHAR(255) NOT NULL UNIQUE,
-    graduation_year INTEGER      NOT NULL CHECK (graduation_year BETWEEN 1950 AND 2100),
+    role            VARCHAR(20)  NOT NULL DEFAULT 'alumni',
+    graduation_year INTEGER      CHECK (graduation_year BETWEEN 1950 AND 2100),
     department      VARCHAR(100) NOT NULL,
     created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_users_role
+        CHECK (role IN ('student', 'alumni', 'academic', 'staff', 'admin')),
+    CONSTRAINT ck_users_graduation_year_by_role
+        CHECK (role NOT IN ('student', 'alumni') OR graduation_year IS NOT NULL)
 );
+
+CREATE INDEX ix_users_role ON users (role);
 
 CREATE TABLE announcements (
     id         SERIAL PRIMARY KEY,
     title      VARCHAR(200) NOT NULL,
     content    TEXT         NOT NULL,
-    author     VARCHAR(100) NOT NULL,
+    author_id  INTEGER      REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX ix_announcements_author_id ON announcements (author_id);
 
 CREATE TABLE job_postings (
     id                SERIAL PRIMARY KEY,
@@ -275,7 +447,7 @@ CREATE TABLE applications (
 CREATE INDEX ix_applications_job_posting_id ON applications (job_posting_id);
 ```
 
-The SQL above is shown for reading. It is not run by hand: the migrations below produce the same tables.
+The SQL above is shown for reading. It is not run by hand: the migrations below produce the same tables. It is the schema after `0005`.
 
 ## 7. Migrations
 
@@ -287,8 +459,9 @@ Migrations are managed with [Alembic](https://alembic.sqlalchemy.org/). Each mig
 | `0002` | `migrations/versions/0002_create_job_postings.py` | Creates `job_postings` (section 4.3) with its foreign key to `users` and its index. Downgrade drops the table. Depends on `0001`, because the foreign key needs `users` to exist. | Applied |
 | `0003` | `migrations/versions/0003_create_applications.py` | Creates `applications` (section 4.4) with its two foreign keys, the unique pair and the index. Downgrade drops the table. Depends on `0002`, because it references both `users` and `job_postings`. | Applied |
 | `0004` | `migrations/versions/0004_job_posting_validation_rules.py` | Applies the job posting validation rules of section 4.3.1: `title` to `VARCHAR(120)`, `location` renamed to `city`, `description` nullable, `CHECK (description IS NOT NULL OR application_url IS NOT NULL)`. Downgrade reverses it. Depends on `0003`. | Applied |
+| `0005` | `migrations/versions/0005_user_roles.py` | Applies section 4.1.1: adds `users.role` (default `alumni`, `ck_users_role`, `ix_users_role`), makes `graduation_year` nullable with `ck_users_graduation_year_by_role`; creates a `staff` user for each existing announcement author, adds `announcements.author_id` (with `ix_announcements_author_id`), links the announcements and drops `author`. Downgrade restores `author` from the users' names and removes the office accounts it created. Depends on `0004`. | Applied |
 
-`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied and the existing rows were untouched. Later `0004` (job posting validation rules) was applied the same way, and `alembic current` now shows `0004 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
+`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied and the existing rows were untouched. Later `0004` (job posting validation rules) and `0005` (user roles, announcement authors; tested first on a temporary database, section 4.1.1) were applied the same way, and `alembic current` now shows `0005 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
 
 | Command (run in the project folder) | Meaning |
 | --- | --- |
@@ -307,8 +480,8 @@ Test data is generated by factories and inserted by a seeder. This does not chan
 
 | File | Role |
 | --- | --- |
-| `app/database/factories.py` | `UserFactory`, `AnnouncementFactory` and `JobPostingFactory` build fake rows with [Faker](https://faker.readthedocs.io/). They respect the table rules: unique emails, `graduation_year` between 2005 and 2025, title within 200 characters, `employment_type` from the allowed list. |
-| `app/database/seed.py` | Seeder: inserts the factory rows into `users`, `announcements` and `job_postings`. |
+| `app/database/factories.py` | `UserFactory`, `AnnouncementFactory` and `JobPostingFactory` build fake rows with [Faker](https://faker.readthedocs.io/). They respect the table rules: unique emails, title within 200 characters, `employment_type` from the allowed list, and the roles of section 4.1.1: about 75% graduates (`graduation_year` 2005 to 2025), 17% students (an expected year 2027 to 2030 and an `@ogr.iu.edu.tr` address) and 8% academics (a title such as "Prof. Dr.", an `@istanbul.edu.tr` address, no year). `staff_accounts()` gives the four offices that publish announcements. |
+| `app/database/seed.py` | Seeder: first makes sure the four office accounts exist (the same addresses migration `0005` gives them, so nothing is duplicated), then inserts the factory rows into `users`, `announcements` (authors picked from academic, staff and admin accounts) and `job_postings` (posters picked from everyone but students). |
 | `app/database/connection.py` | Creates the database connection from `DATABASE_URL`. |
 
 | Command | Meaning |
@@ -456,4 +629,6 @@ These routes were tested against a temporary database with all three migrations 
 - Column names use `snake_case`: `graduation_year`, `created_at`.
 - Every table has an `id` primary key plus `created_at` and `updated_at` columns.
 - Foreign keys are named `<role>_<table>_id` when the role matters: `posted_by_user_id` says both which table it points to and why.
-- Indexes are named `ix_<table>_<column>`; unique constraints `uq_<table>_<columns>`.
+- Indexes are named `ix_<table>_<column>`; unique constraints `uq_<table>_<columns>`; check constraints `ck_<table>_<rule>` (`ck_users_role`, `ck_users_graduation_year_by_role`).
+- Fixed lists (role, employment type, status) are stored as lowercase `snake_case` text checked by a `CHECK`, not as numbers: `alumni`, `under_review`, `full_time`. The pages turn them into labels.
+- A foreign key to the user who did something is named after the act or the role: `posted_by_user_id` (job postings), `author_id` (announcements, planned).

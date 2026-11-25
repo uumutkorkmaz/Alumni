@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.models import user as user_model
-from app.models.user import UserCreate, UserUpdate
+from app.models.user import Role, UserCreate, UserUpdate
 
 
 class ApiUserController:
@@ -19,8 +19,9 @@ class ApiUserController:
     def create(self, data: UserCreate) -> dict:
         return user_model.create_user(data)
 
-    def list(self) -> list[dict]:
-        return user_model.get_users()
+    def list(self, role: Role | None = None) -> list[dict]:
+        """All users; ?role=staff (student, alumni, academic, staff, admin) keeps one role."""
+        return user_model.get_users(role)
 
     def get(self, user_id: int) -> dict:
         return user_model.get_user(user_id)

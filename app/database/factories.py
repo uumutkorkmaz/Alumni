@@ -1,3 +1,6 @@
+import re
+from collections import OrderedDict
+
 from faker import Faker
 
 DEPARTMENTS = [
@@ -9,18 +12,58 @@ DEPARTMENTS = [
 ]
 
 ANNOUNCEMENT_AUTHORS = ["Department Office", "Career Center", "Alumni Association", "Dean's Office"]
+# Faker needs an OrderedDict for weighted choices.
+ROLE_WEIGHTS = OrderedDict([("alumni", 0.75), ("student", 0.17), ("academic", 0.08)])
+ACADEMIC_TITLES = ["Prof. Dr.", "Assoc. Prof. Dr.", "Asst. Prof. Dr.", "Lect.", "Res. Asst."]
+
+
+def staff_accounts() -> list[dict]:
+    """One staff account for each office that publishes announcements (ddd.md 4.1.1)."""
+    return [
+        {
+            "name": office,
+            # Same address as migration 0005 gives these offices, so seeding twice adds no duplicate.
+            "email": re.sub(r"[^A-Za-z0-9]+", "-", office.strip()).lower() + "@staff.alumni-tracking.local",
+            "role": "staff",
+            "graduation_year": None,
+            "department": "Faculty of Economics",
+        }
+        for office in ANNOUNCEMENT_AUTHORS
+    ]
 
 
 class UserFactory:
-    """Builds fake user rows that satisfy the constraints in ddd.md (unique email, year 1950-2100)."""
+    """Builds fake user rows that satisfy the constraints in ddd.md (unique email, year 1950-2100,
+    role from section 4.1.1). Most are graduates; some students (with an expected year and a
+    student address) and a few academics (with a university address and no year)."""
 
     def __init__(self, fake: Faker) -> None:
         self.fake = fake
 
     def make(self) -> dict:
+        role = self.fake.random_element(ROLE_WEIGHTS)
+        name = self.fake.name()
+        local = self.fake.unique.user_name()
+        if role == "student":
+            return {
+                "name": name,
+                "email": f"{local}@ogr.iu.edu.tr",
+                "role": role,
+                "graduation_year": self.fake.random_int(min=2027, max=2030),
+                "department": "Management Information Systems",
+            }
+        if role == "academic":
+            return {
+                "name": f"{self.fake.random_element(ACADEMIC_TITLES)} {name}",
+                "email": f"{local}@istanbul.edu.tr",
+                "role": role,
+                "graduation_year": None,
+                "department": "Management Information Systems",
+            }
         return {
-            "name": self.fake.name(),
+            "name": name,
             "email": self.fake.unique.email(),
+            "role": "alumni",
             "graduation_year": self.fake.random_int(min=2005, max=2025),
             "department": self.fake.random_element(DEPARTMENTS),
         }
@@ -30,16 +73,18 @@ class UserFactory:
 
 
 class AnnouncementFactory:
-    """Builds fake announcement rows (title <= 200 chars, author <= 100 chars)."""
+    """Builds fake announcement rows (title <= 200 chars). author_ids are existing academic, staff
+    or admin accounts: only they may publish (ddd.md 4.1.1)."""
 
-    def __init__(self, fake: Faker) -> None:
+    def __init__(self, fake: Faker, author_ids: list[int]) -> None:
         self.fake = fake
+        self.author_ids = author_ids
 
     def make(self) -> dict:
         return {
             "title": self.fake.sentence(nb_words=6).rstrip("."),
             "content": self.fake.paragraph(nb_sentences=4),
-            "author": self.fake.random_element(ANNOUNCEMENT_AUTHORS),
+            "author_id": self.fake.random_element(self.author_ids),
         }
 
     def make_many(self, count: int) -> list[dict]:
@@ -63,8 +108,8 @@ JOB_TITLES = [
 class JobPostingFactory:
     """Builds fake job posting rows that satisfy the constraints in ddd.md.
 
-    user_ids are the ids of users that already exist: most postings are shared by one of them,
-    the rest are department postings (posted_by_user_id = NULL).
+    user_ids are the ids of users that already exist and may post (not students, ddd.md 4.1.1):
+    most postings are shared by one of them, the rest are department postings (posted_by_user_id = NULL).
     """
 
     def __init__(self, fake: Faker, user_ids: list[int]) -> None:

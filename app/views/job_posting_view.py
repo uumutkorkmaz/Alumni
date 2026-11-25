@@ -1,6 +1,7 @@
 from datetime import date
 from html import escape
 
+from app.models.user import APPLICANT_ROLES, POSTER_ROLES
 from app.views.layout import (
     alert,
     back_link,
@@ -130,7 +131,12 @@ def render_job_posting_detail(
     ) or '<tr><td class="empty" colspan="4">Nobody has applied yet.</td></tr>'
 
     if is_open(posting):
-        options = "".join(f'<option value="{u["id"]}">{escape(u["name"])} (#{u["id"]})</option>' for u in users)
+        # Only students and graduates apply (ddd.md section 4.1.1).
+        options = "".join(
+            f'<option value="{u["id"]}">{escape(u["name"])} (#{u["id"]})</option>'
+            for u in users
+            if u["role"] in APPLICANT_ROLES
+        )
         apply_form = f"""
       <form class="form-grid" method="post" action="/job-postings/{posting['id']}/apply">
         <div class="field full"><label for="user_id">Applicant</label>
@@ -219,6 +225,7 @@ def _posting_form(action: str, users: list[dict], values: dict | None = None, ed
         f'<option value="{u["id"]}"{" selected" if str(p.get("posted_by_user_id")) == str(u["id"]) else ""}>'
         f'{escape(u["name"])} (#{u["id"]})</option>'
         for u in users
+        if u["role"] in POSTER_ROLES or str(p.get("posted_by_user_id")) == str(u["id"])
     )
     checked = " checked" if p.get("is_active", True) else ""
     submit_label = "Save changes" if editing else "Create job posting"

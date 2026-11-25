@@ -6,15 +6,21 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.controllers.admin_registration_controller import AdminRegistrationController
 from app.controllers.announcement_controller import AnnouncementController
 from app.controllers.api_announcement_controller import ApiAnnouncementController
+from app.controllers.api_auth_controller import ApiAuthController
 from app.controllers.api_application_controller import ApiApplicationController
 from app.controllers.api_job_posting_controller import ApiJobPostingController
+from app.controllers.api_register_controller import ApiRegisterController
 from app.controllers.api_user_controller import ApiUserController
 from app.controllers.application_controller import ApplicationController
 from app.controllers.job_posting_controller import JobPostingController
+from app.controllers.login_controller import LoginController
+from app.controllers.register_controller import RegisterController
 from app.controllers.user_controller import UserController
 from app.database.stats import get_home_data
+from app.middleware.auth import auth_middleware
 from app.middleware.logger import log_requests
 from app.middleware.not_found_guardian import not_found_guardian
 from app.middleware.server_error_guardian import server_error_guardian
@@ -23,8 +29,10 @@ from app.views.home_view import render_home
 from app.views.layout import render_page
 
 app = FastAPI(title="Alumni Tracking System")
-# The middleware added last runs outermost. From the inside out: 404 guardian, 5xx guardian
-# (it also catches a failure inside the 404 guardian), logger (it logs the final answer).
+# The middleware added last runs outermost. From the inside out: auth (who is signed in, may they
+# reach this address; ddd.md 4.1.3), 404 guardian, 5xx guardian (it also catches a failure inside
+# the ones within it), logger (it logs the final answer).
+app.middleware("http")(auth_middleware)
 app.middleware("http")(not_found_guardian)
 app.middleware("http")(server_error_guardian)
 app.middleware("http")(log_requests)
@@ -66,6 +74,20 @@ job_posting_controller = JobPostingController()
 application_controller = ApplicationController()
 app.include_router(job_posting_controller.router)
 app.include_router(application_controller.router)
+
+# Registration and its review (ddd.md 4.1.2)
+register_controller = RegisterController()
+admin_registration_controller = AdminRegistrationController()
+api_register_controller = ApiRegisterController()
+app.include_router(register_controller.router)
+app.include_router(admin_registration_controller.router)
+app.include_router(api_register_controller.router)
+
+# Login and logout (ddd.md 4.1.3)
+login_controller = LoginController()
+api_auth_controller = ApiAuthController()
+app.include_router(login_controller.router)
+app.include_router(api_auth_controller.router)
 
 
 @app.get("/", response_class=HTMLResponse)

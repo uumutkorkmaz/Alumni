@@ -217,10 +217,44 @@ document.querySelectorAll('[data-views]').forEach(function (group) {
 """
 
 
+# Guests see only the public pages; everything else needs signing in (ddd.md 4.1.3).
+GUEST_LINKS = {"/", "/about", "/docs"}
+
+
+def _account(active: str) -> str:
+    """The right end of the navbar: the signed-in user with a logout button, or login and register."""
+    from app.auth import me
+    from app.models.user import ROLE_LABELS
+
+    user = me()
+    if user is None:
+        login_cls = ' class="nav-login active"' if active == "/login" else ' class="nav-login"'
+        return (
+            f'<a{login_cls} href="/login">Giriş yap</a>'
+            f'<a class="nav-cta{" active" if active == "/register" else ""}" href="/register">Register</a>'
+        )
+    first = escape(user["name"].split()[0] if user["name"].split() else user["name"])
+    return (
+        '<div class="nav-user">'
+        f'<a class="nav-me" href="/users/{user["id"]}" title="{escape(user["name"])}">'
+        f'<span class="avatar" aria-hidden="true">{initials(user["name"])}</span>'
+        f'<span class="nav-me-text"><b>{first}</b><small>{ROLE_LABELS[user["role"]]}</small></span></a>'
+        '<form method="post" action="/logout" class="inline-form">'
+        '<button type="submit" class="btn btn-ghost btn-sm">Çıkış</button></form>'
+        "</div>"
+    )
+
+
 def render_nav(active: str) -> str:
+    from app.auth import me
+
+    user = me()
     active_attr = ' class="active" aria-current="page"'
+    items = [(h, l) for h, l in NAV_LINKS if user is not None or h in GUEST_LINKS]
+    if user is not None and user["role"] == "admin":
+        items.append(("/admin/registrations", "Approvals"))
     links = "".join(
-        f'<a href="{href}"{active_attr if href == active else ""}>{label}</a>' for href, label in NAV_LINKS
+        f'<a href="{href}"{active_attr if href == active else ""}>{label}</a>' for href, label in items
     )
     return f"""
   <header class="site-nav">
@@ -230,6 +264,7 @@ def render_nav(active: str) -> str:
         <span class="brand-name"><b>Alumni Tracking</b><small>İÜ &middot; İKTİSAT &middot; YBS</small></span>
       </a>
       <nav class="nav-links" aria-label="Main">{links}</nav>
+      <div class="nav-account">{_account(active)}</div>
     </div>
   </header>"""
 
@@ -373,14 +408,16 @@ def delete_form(action: str, what: str) -> str:
     )
 
 
-def row_actions(base: str, what: str) -> str:
+def row_actions(base: str, what: str, edit: bool = True, delete: bool = True) -> str:
     """Edit / Delete buttons for a table row (the row's title is already a link to the detail page).
-    `base` is e.g. /users/3."""
+    `base` is e.g. /users/3. A button the signed-in user may not use is left out (ddd.md 4.1.3)."""
+    if not edit and not delete:
+        return ""
     return (
         '<div class="row-actions">'
-        f'<a class="btn btn-ghost btn-sm" href="{base}/edit">Edit</a>'
-        f"{delete_form(base + '/delete', what)}"
-        "</div>"
+        + (f'<a class="btn btn-ghost btn-sm" href="{base}/edit">Edit</a>' if edit else "")
+        + (delete_form(base + "/delete", what) if delete else "")
+        + "</div>"
     )
 
 

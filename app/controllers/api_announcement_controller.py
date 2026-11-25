@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+
+from app import policy
 
 from app.models import announcement as announcement_model
 from app.models.announcement import AnnouncementCreate, AnnouncementUpdate
@@ -17,6 +19,7 @@ class ApiAnnouncementController:
         self.router.add_api_route("/{announcement_id}", self.delete, methods=["DELETE"])
 
     def create(self, data: AnnouncementCreate) -> dict:
+        data.author_id = policy.author_for(data.author_id)
         return announcement_model.create_announcement(data)
 
     def list(self) -> list[dict]:
@@ -26,9 +29,13 @@ class ApiAnnouncementController:
         return announcement_model.get_announcement(announcement_id)
 
     def replace(self, announcement_id: int, data: AnnouncementCreate) -> dict:
+        if not policy.is_admin():  # the author stays; only an admin changes it
+            data.author_id = announcement_model.get_announcement(announcement_id)["author_id"]
         return announcement_model.update_announcement(announcement_id, data)
 
     def update(self, announcement_id: int, data: AnnouncementUpdate) -> dict:
+        if "author_id" in data.model_fields_set and not policy.is_admin():
+            raise HTTPException(status_code=403, detail="Only an admin changes the author of an announcement")
         return announcement_model.partial_update_announcement(announcement_id, data)
 
     def delete(self, announcement_id: int) -> dict:

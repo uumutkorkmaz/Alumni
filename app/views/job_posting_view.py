@@ -1,7 +1,9 @@
 from datetime import date
 from html import escape
 
-from app.models.user import APPLICANT_ROLES, POSTER_ROLES
+from app import policy
+from app.auth import me
+from app.models.user import POSTER_ROLES
 from app.views.layout import (
     alert,
     back_link,
@@ -75,7 +77,7 @@ def _row(posting: dict, users_by_id: dict[int, dict]) -> str:
         f'<td class="date">{posting["deadline"] or DASH}</td>'
         f"<td>{_status_badge(posting)}</td>"
         f"<td>{_user_link(posting['posted_by_user_id'], users_by_id)}</td>"
-        f'<td class="col-actions">{row_actions(base, "job posting")}</td></tr>'
+        f'<td class="col-actions">{row_actions(base, "job posting", policy.can_edit_posting(posting), policy.can_edit_posting(posting))}</td></tr>'
     )
 
 
@@ -101,7 +103,7 @@ def render_job_posting_list(
         "Careers &middot; Postings",
         "Jobs and <em>internships</em>",
         "Positions shared by the department and by graduates. A posting stays open until its deadline, or until it is closed.",
-        new_button("New job posting") + button("Applications", "/applications"),
+        (new_button("New job posting") if policy.can_post() else "") + button("Applications", "/applications"),
     )}
     {error_box}
     {stats}
@@ -113,7 +115,7 @@ def render_job_posting_list(
       </table>
     </div>
 
-    {form_card("Add a job posting", _posting_form("/job-postings", users, values), "Description or link required")}
+    {form_card("Add a job posting", _posting_form("/job-postings", users, values), "Description or link required") if policy.can_post() else ""}
     """
     return render_page("Job Postings", body, ACTIVE)
 
@@ -130,31 +132,27 @@ def render_job_posting_detail(
         for a in applications
     ) or '<tr><td class="empty" colspan="4">Nobody has applied yet.</td></tr>'
 
-    if is_open(posting):
-        # Only students and graduates apply (ddd.md section 4.1.1).
-        options = "".join(
-            f'<option value="{u["id"]}">{escape(u["name"])} (#{u["id"]})</option>'
-            for u in users
-            if u["role"] in APPLICANT_ROLES
-        )
+    if is_open(posting) and policy.can_apply():
+        # The applicant is the signed-in student or graduate (ddd.md 4.1.3).
         apply_form = f"""
       <form class="form-grid" method="post" action="/job-postings/{posting['id']}/apply">
-        <div class="field full"><label for="user_id">Applicant</label>
-          <select id="user_id" name="user_id" required>{options}</select></div>
+        <div class="field full"><span class="label-like">Applicant</span><p class="fixed-value">{escape(me()["name"])} (you)</p></div>
         <div class="field full"><label for="cover_letter">Cover letter (optional)</label>
           <textarea id="cover_letter" name="cover_letter" rows="4"></textarea></div>
         <div class="form-actions"><button type="submit" class="btn btn-primary">Send application</button></div>
       </form>"""
-    else:
+    elif not is_open(posting):
         apply_form = '<p class="muted" style="margin: 0">This posting is closed, so nobody can apply to it.</p>'
+    else:
+        apply_form = '<p class="muted" style="margin: 0">Only students and graduates apply to job postings.</p>'
 
     body = f"""
     {page_hero(
         f"Job posting #{posting['id']} &middot; {_type_label(posting)}",
         escape(posting['title']),
         "",
-        (button("Apply", "#apply", "primary", arrow=True) if is_open(posting) else "")
-        + button("Edit", f"/job-postings/{posting['id']}/edit")
+        (button("Apply", "#apply", "primary", arrow=True) if is_open(posting) and policy.can_apply() else "")
+        + (button("Edit", f"/job-postings/{posting['id']}/edit") if policy.can_edit_posting(posting) else "")
         + button("All job postings", "/job-postings"),
         meta=f"<span>{escape(posting['company'])}</span><span>{escape(posting['city'])}</span>{_status_badge(posting)}",
         size="compact",
@@ -227,6 +225,29 @@ def _posting_form(action: str, users: list[dict], values: dict | None = None, ed
         for u in users
         if u["role"] in POSTER_ROLES or str(p.get("posted_by_user_id")) == str(u["id"])
     )
+    # Who the posting belongs to (ddd.md 4.1.3): an admin chooses anyone; staff choose the department
+    # or themselves; graduates and academics always post as themselves; an edit keeps the poster.
+    user = me()
+    if policy.is_admin():
+        owner_field = (
+            '<div class="field"><label for="posted_by_user_id">Posted by</label>'
+            f'<select id="posted_by_user_id" name="posted_by_user_id">{owner_options}</select></div>'
+        )
+    elif user and user["role"] == "staff" and not editing:
+        owner_field = (
+            '<div class="field"><label for="posted_by_user_id">Posted by</label>'
+            '<select id="posted_by_user_id" name="posted_by_user_id">'
+            '<option value="">The department</option>'
+            f'<option value="{user["id"]}">{escape(user["name"])} (you)</option></select></div>'
+        )
+    else:
+        owner_id = p.get("posted_by_user_id") if editing else (user["id"] if user else None)
+        owner = next((u for u in users if str(u["id"]) == str(owner_id)), None)
+        shown = escape(owner["name"]) if owner else "The department"
+        owner_field = (
+            f'<div class="field"><span class="label-like">Posted by</span><p class="fixed-value">{shown}</p>'
+            f'<input type="hidden" name="posted_by_user_id" value="{owner_id or ""}" /></div>'
+        )
     checked = " checked" if p.get("is_active", True) else ""
     submit_label = "Save changes" if editing else "Create job posting"
     cancel = f'<a class="btn btn-ghost" href="/job-postings/{p["id"]}">Cancel</a>' if editing else ""
@@ -241,8 +262,7 @@ def _posting_form(action: str, users: list[dict], values: dict | None = None, ed
         <input id="city" type="text" name="city" value="{value('city')}" maxlength="150" required /></div>
       <div class="field"><label for="employment_type">Employment type</label>
         <select id="employment_type" name="employment_type" required>{type_options}</select></div>
-      <div class="field"><label for="posted_by_user_id">Posted by</label>
-        <select id="posted_by_user_id" name="posted_by_user_id">{owner_options}</select></div>
+      {owner_field}
       <p class="muted small-note">Fill in <b>at least one</b> of Description and Application URL. You may fill in both.</p>
       <div class="field full"><label for="description">Description (optional if an application URL is given)</label>
         <textarea id="description" name="description">{value('description')}</textarea></div>

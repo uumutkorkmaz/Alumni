@@ -61,6 +61,24 @@ def render_generic_not_found_page(requested: str) -> str:
     return render_page("Page not found", body, active="", narrow=True)
 
 
+def render_forbidden_page(method: str, path: str, reason: str) -> str:
+    """403: signed in, but this role may not do this (ddd.md 4.1.3, auth middleware)."""
+    first = path.strip("/").split("/")[0]
+    section = SECTIONS.get(first)
+    back = f'<a class="btn btn-ghost" href="{section[0]}">Back to {section[1]}</a>' if section else ""
+    body = f"""
+    {_error_head(403, "Not allowed", "You are signed in, but your role may not do this.",
+                 button("Home", "/", "primary") + back)}
+    <section class="card card-featured" data-reveal>
+      <dl class="dl">
+        <dt>Reason</dt><dd>{escape(reason)}</dd>
+        <dt>Request</dt><dd><code>{escape(method)} {escape(path)}</code></dd>
+      </dl>
+    </section>
+    """
+    return render_page("Not allowed", body, active=section[0] if section else "", narrow=True)
+
+
 def render_not_found_page(method: str, path: str, reason: str) -> str:
     first = path.strip("/").split("/")[0]
     section = SECTIONS.get(first)

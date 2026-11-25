@@ -40,7 +40,8 @@ class Announcement(Base):
 class AnnouncementCreate(BaseModel):
     title: str = Field(max_length=200)
     content: str
-    author_id: int
+    # Filled by the controller with the signed-in user; only an admin may name another author.
+    author_id: int | None = None
 
 
 class AnnouncementUpdate(BaseModel):
@@ -60,6 +61,8 @@ def _check_author(author_id: int) -> None:
 
 
 def create_announcement(data: AnnouncementCreate) -> dict:
+    if data.author_id is None:
+        raise HTTPException(status_code=422, detail="author_id is required")
     _check_author(data.author_id)
     with get_engine().begin() as conn:
         new_id = conn.execute(

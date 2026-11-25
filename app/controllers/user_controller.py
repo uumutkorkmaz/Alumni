@@ -2,6 +2,8 @@ from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
+from app import policy
+from app.models import registration as registration_model
 from app.models import user as user_model
 from app.models.user import UserCreate, UserUpdate
 from app.views.user_view import render_user_detail, render_user_edit_form, render_user_list
@@ -31,8 +33,8 @@ class UserController:
 
     def list(self) -> HTMLResponse:
         """GET /users -> listing (R): renders the users table."""
-        users = user_model.get_users()
-        return HTMLResponse(render_user_list(users))
+        users = policy.hide_emails(user_model.get_users())
+        return HTMLResponse(render_user_list(users, registration_model.pending_count()))
 
     def create(
         self,
@@ -43,6 +45,7 @@ class UserController:
         department: str = Form(...),
     ) -> RedirectResponse:
         """POST /users -> creating (C): creates the user then redirects back to the listing."""
+        policy.check_role_change(None, role)
         try:
             data = UserCreate(
                 name=name, email=email, role=role, graduation_year=_year(graduation_year), department=department
@@ -54,7 +57,7 @@ class UserController:
 
     def get(self, user_id: int) -> HTMLResponse:
         """GET /users/{id} -> detail page (R)."""
-        user = user_model.get_user(user_id)
+        user = policy.hide_emails([user_model.get_user(user_id)])[0]
         return HTMLResponse(render_user_detail(user))
 
     def edit_form(self, user_id: int) -> HTMLResponse:
@@ -73,6 +76,7 @@ class UserController:
     ) -> RedirectResponse:
         """POST /users/{id}/edit -> updating (U): HTML forms can't send PUT/PATCH,
         so the edit form submits here instead; redirects back to the detail page."""
+        policy.check_role_change(user_model.get_user(user_id)["role"], role)
         try:
             data = UserUpdate(
                 name=name, email=email, role=role, graduation_year=_year(graduation_year), department=department

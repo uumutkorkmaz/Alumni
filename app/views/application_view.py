@@ -1,7 +1,8 @@
 from html import escape
 
 from app.views.job_posting_view import is_open
-from app.models.user import APPLICANT_ROLES
+from app import policy
+from app.auth import me
 from app.views.layout import (
     alert,
     button,
@@ -45,13 +46,26 @@ def _row(a: dict, users_by_id: dict[int, dict], postings_by_id: dict[int, dict])
     options = "".join(
         f'<option value="{s}"{" selected" if s == a["status"] else ""}>{_label(s)}</option>' for s in STATUSES
     )
-    status_form = (
-        f'<form class="inline-form" method="post" action="/applications/{a["id"]}/status">'
-        f'<select name="status" aria-label="New status">{options}</select> '
-        f'<button type="submit" class="btn btn-ghost btn-sm">Update</button></form>'
-    )
+    # Who may change the status (ddd.md 4.1.3): staff, admin and the posting's owner decide; the
+    # applicant may only withdraw.
+    user = me()
+    owner = (posting or {}).get("posted_by_user_id")
+    if user and (user["role"] in ("staff", "admin") or user["id"] == owner):
+        status_form = (
+            f'<form class="inline-form" method="post" action="/applications/{a["id"]}/status">'
+            f'<select name="status" aria-label="New status">{options}</select> '
+            f'<button type="submit" class="btn btn-ghost btn-sm">Update</button></form>'
+        )
+    elif user and user["id"] == a["user_id"] and a["status"] != "withdrawn":
+        status_form = (
+            f'<form class="inline-form" method="post" action="/applications/{a["id"]}/status">'
+            '<input type="hidden" name="status" value="withdrawn" />'
+            '<button type="submit" class="btn btn-ghost btn-sm">Withdraw</button></form>'
+        )
+    else:
+        status_form = '<span class="muted">&ndash;</span>'
     cover_letter = escape(a["cover_letter"] or "") or DASH
-    delete = delete_form(f"/applications/{a['id']}/delete", "application")
+    delete = delete_form(f"/applications/{a['id']}/delete", "application") if policy.is_admin() else ""
     return (
         f'<tr><td class="id">#{a["id"]}</td><td>{applicant}</td><td>{job}</td>'
         f'<td><span class="badge s-{a["status"]}">{_label(a["status"])}</span></td>'
@@ -85,12 +99,6 @@ def render_application_list(
         '<tr><td class="empty" colspan="8">No applications yet. Create the first one below.</td></tr>'
     )
 
-    # Only students and graduates apply (ddd.md section 4.1.1).
-    user_options = "".join(
-        f'<option value="{u["id"]}">{escape(u["name"])} (#{u["id"]})</option>'
-        for u in users
-        if u["role"] in APPLICANT_ROLES
-    )
     posting_options = "".join(
         f'<option value="{p["id"]}">{escape(p["title"])} - {escape(p["company"])}'
         f'{"" if is_open(p) else " (closed)"}</option>'
@@ -99,8 +107,7 @@ def render_application_list(
 
     new_form = f"""
       <form class="form-grid" method="post" action="/applications">
-        <div class="field"><label for="user_id">Applicant</label>
-          <select id="user_id" name="user_id" required>{user_options}</select></div>
+        <div class="field"><span class="label-like">Applicant</span><p class="fixed-value">{escape(me()["name"]) if me() else ""} (you)</p></div>
         <div class="field"><label for="job_posting_id">Job posting</label>
           <select id="job_posting_id" name="job_posting_id" required>{posting_options}</select></div>
         <div class="field full"><label for="cover_letter">Cover letter (optional)</label>
@@ -121,7 +128,7 @@ def render_application_list(
         "Pipeline &middot; Applications",
         "Applications, <em>step by step</em>",
         "Who applied to which job posting, and where each application stands: from submitted to the final answer.",
-        new_button("New application") + button("Job postings", "/job-postings"),
+        (new_button("New application") if policy.can_apply() else "") + button("Job postings", "/job-postings"),
     )}
     {alert(error)}
     {stats}
@@ -135,6 +142,6 @@ def render_application_list(
       </table>
     </div>
 
-    {form_card("New application", new_form, "Only open postings accept applications")}
+    {form_card("New application", new_form, "Only open postings accept applications") if policy.can_apply() else ""}
     """
     return render_page("Applications", body, ACTIVE)

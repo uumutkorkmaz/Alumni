@@ -5,3 +5,6 @@ __pycache__/
 # Log files stay on each machine; only the empty folder is committed.
 logs/*
 !logs/.gitkeep
+# Uploaded registration documents are personal data: never committed.
+uploads/*
+!uploads/.gitkeep

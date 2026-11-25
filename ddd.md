@@ -4,7 +4,7 @@
 
 This document describes the database design of the Alumni Tracking System. The tables below are created by the migrations in [section 7](#7-migrations), and the app reads and writes them through the models in `app/models/` (see [section 8](#8-from-in-memory-models-to-tables)).
 
-> **Status:** all four tables (`users`, `announcements`, `job_postings`, `applications`) exist in the database: migrations `0001` to `0005` have been applied (`alembic current` shows `0005 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first. The validation rules for job postings are in [section 4.3.1](#431-validation-rules-for-a-job-posting). **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) and the announcement author as a user are **applied** by migration `0005` ([section 4.1.1](#411-roles-and-permissions)); the permission table there waits for the login of a later task.
+> **Status:** all six tables (`users`, `announcements`, `job_postings`, `applications`, `registration_documents`, `sessions`) exist in the database: migrations `0001` to `0007` have been applied (`alembic current` shows `0007 (head)`). The app uses `users` and `announcements` for its pages and API, and has JSON routes for `job_postings` and `applications` (sections [8.2](#82-routes-direct-and-nested) and [8.3](#83-applications-models-and-routes)). On a fresh database, run `alembic upgrade head` first. The validation rules for job postings are in [section 4.3.1](#431-validation-rules-for-a-job-posting). **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) and the announcement author as a user are **applied** by migration `0005` ([section 4.1.1](#411-roles-and-permissions)); its permission table is enforced by the auth middleware. **Registration** (account status, password hash, role fields, the uploaded document and the admin review) is applied by migration `0006` ([section 4.1.2](#412-registration)); email verification is deferred. **Login, logout and the auth middleware** are applied by migration `0007` ([section 4.1.3](#413-login-logout-and-the-auth-middleware)).
 
 ## 1. Why a Database
 
@@ -61,7 +61,7 @@ The system has four entities:
 
 #### 4.1.1 Roles and permissions
 
-> **Status:** applied. The task was given in class: *"Update ddd.md for users and their roles in the system."* The roles were decided here first (design first, as with the job posting rules in section 4.3.1); migration `0005` then changed the tables, and the models, the API, the pages and the seed follow them. The data rules at the end of this section are enforced; the permissions in Table 2 (who may do what) wait for the login that a later task adds.
+> **Status:** applied. The task was given in class: *"Update ddd.md for users and their roles in the system."* The roles were decided here first (design first, as with the job posting rules in section 4.3.1); migration `0005` then changed the tables, and the models, the API, the pages and the seed follow them. The data rules at the end of this section are enforced; the permissions in Table 2 (who may do what) are enforced since the login and auth middleware tasks (section 4.1.3).
 
 Until now every row of `users` was a graduate. The system has other people too: students looking for an internship, academics sharing a project position, the department office publishing announcements, and someone who runs the system. Each user gets **one role**.
 
@@ -202,7 +202,7 @@ CREATE INDEX ix_announcements_author_id ON announcements (author_id);
 | An announcement's author is `academic`, `staff` or `admin` | `require_role()` in the user model, called by the announcement model (a `CHECK` cannot look into another table) | Applied; refused with **422**, a missing author with **404** |
 | A job posting's poster is not a `student` | Job posting model | Applied; refused with **422** |
 | An applicant is a `student` or `alumni` | Application model | Applied; refused with **422** |
-| Table 2 ("who may do what": own records, deleting, giving roles) | The login and permission checks | A later task (login is not part of this one) |
+| Table 2 ("who may do what": own records, deleting, giving roles) | The auth middleware (by address and owner) and `app/policy.py` (what only the controller sees) | Applied with the login tasks, section 4.1.3 |
 
 The refusals read like *"A staff member cannot apply to a job posting (allowed: student, graduate)"*. The pages offer only the accounts that fit: the author list of the announcement form shows academic, staff and admin accounts; the applicant lists show students and graduates; the "posted by" list leaves students out.
 
@@ -210,7 +210,124 @@ Tested on a temporary database before the real one: upgrade from `0004` with old
 
 The first four rules depend only on the data (the role of the user named in the request), so they can be enforced as soon as the column exists. Table 2 depends on *who is signed in*, which needs the login that a later task adds.
 
-**How people get their role (registration, next task).** Decided for the first version: students register with their student email address, academic and administrative staff with an `@istanbul.edu.tr` address, graduates with any address; every new account uploads a document and stays pending until an `admin` approves it. **Email verification (a confirmation link) is deferred to a later task.** The registration columns and tables will be designed here, in a new section, before migration `0006` adds them.
+**How people get their role:** by registering, section 4.1.2.
+
+#### 4.1.2 Registration
+
+> **Status:** applied by migration `0006`. The task was given in class: *"Prepare register page and functionality with inputs what you want."* Login (signing in with the password) is a later task; **email verification (a confirmation link) is deliberately deferred to a later task** as well.
+
+**Who registers how.** A person picks a role and proves it twice: with the address they register with, and with a document an `admin` looks at.
+
+| Role | Email address | Document | Extra required fields |
+| --- | --- | --- | --- |
+| `student` | Must end with `@ogr.iu.edu.tr` (student address) | Student certificate (e-Devlet "Öğrenci Belgesi") | Student number, expected graduation year (this year or later), department |
+| `alumni` | Any address (the student address is closed after graduation) | Graduation document or diploma | Graduation year (this year or earlier), department; student number optional |
+| `academic` | Must end with `@istanbul.edu.tr` | Staff ID card or duty document | Academic title, department |
+| `staff` | Must end with `@istanbul.edu.tr` | Staff ID card or duty document | Unit (department), position |
+| `admin` | Cannot register | — | Created with `python -m app.cli create-admin`; later admins are given the role |
+
+The two domains are settings (`STUDENT_EMAIL_DOMAIN`, `STAFF_EMAIL_DOMAIN` in `.env`), not code. Everyone also gives a name, an email, a password (at least 8 characters with a letter and a digit, typed twice) and the consent to the processing of their data (KVKK).
+
+**Account status.** A registered account is `pending` until an `admin` reviews the document, then `active` or `rejected` (with the reason). Only `active` accounts are in the album, the lists and the forms, and only they may publish, post or apply (the data rules of section 4.1.1 also check the status). Users that existed before `0006` and the seeded ones are `active`.
+
+```
+register (+ document) ──► pending ──(admin approves)──► active
+                                 └──(admin rejects)───► rejected (reason)
+```
+
+**Columns added to `users`** (all nullable or with a default, so existing rows are untouched):
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `status` | `VARCHAR(20)` | `NOT NULL`, `DEFAULT 'active'`, `CHECK (status IN ('pending', 'active', 'rejected'))` (`ck_users_status`), indexed (`ix_users_status`) | Where the account stands. |
+| `password_hash` | `VARCHAR(255)` | nullable | The password as an `scrypt` hash with its own random salt (`scrypt$n$r$p$salt$hash`); the password itself is never stored. Empty for users that never registered (the login task lets them set one). Never returned by the API or shown on a page. |
+| `student_number` | `VARCHAR(20)` | nullable, `UNIQUE` (`uq_users_student_number`) | Students (required) and graduates (optional). Digits only. |
+| `title` | `VARCHAR(40)` | nullable | Academics: Prof. Dr., Doç. Dr., Dr. Öğr. Üyesi, Öğr. Gör., Arş. Gör. |
+| `position` | `VARCHAR(100)` | nullable | Administrative staff: their duty (e.g. "Bölüm sekreteri"). |
+| `consent_at` | `TIMESTAMP` | nullable | When the person accepted the data processing text at registration. |
+| `reviewed_at` | `TIMESTAMP` | nullable | When an admin approved or rejected the account. |
+| `reviewed_by_user_id` | `INTEGER` | nullable, `REFERENCES users(id) ON DELETE SET NULL` | The admin who reviewed it. **Empty until the login task**: without sign-in the system cannot know who pressed the button. |
+| `rejection_reason` | `VARCHAR(300)` | nullable; `CHECK (status <> 'rejected' OR rejection_reason IS NOT NULL)` (`ck_users_rejection_reason`) | Shown to the person; a rejection always says why. |
+
+The fields that only some roles need (student number, title, position, the year rules) are checked by the registration model, because a `CHECK` would also have to accept the rows that existed before registration did.
+
+**New table `registration_documents`** (the uploaded proof, one per registration):
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `id` | `SERIAL` | `PRIMARY KEY` | |
+| `user_id` | `INTEGER` | `NOT NULL`, `UNIQUE`, `REFERENCES users(id) ON DELETE CASCADE` | The registration it proves. Deleting the user deletes the record (and the app deletes the file). |
+| `original_name` | `VARCHAR(255)` | `NOT NULL` | File name as uploaded, only for showing. |
+| `stored_name` | `VARCHAR(64)` | `NOT NULL`, `UNIQUE` | Random name on disk (`<uuid>.<ext>`), never built from user input. |
+| `content_type` | `VARCHAR(40)` | `NOT NULL`, `CHECK (content_type IN ('application/pdf', 'image/jpeg', 'image/png'))` | Decided from the file's first bytes, not from what the browser says. |
+| `size_bytes` | `INTEGER` | `NOT NULL`, `CHECK (size_bytes BETWEEN 1 AND 5242880)` | At most 5 MB. |
+| `uploaded_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | |
+| `file_deleted_at` | `TIMESTAMP` | nullable | When the file was removed from disk. |
+
+**Where the files live.** In `uploads/registration/`, outside `app/static` (so no URL reaches them), mounted into the container and ignored by git like `logs/`. The only way to open one is the review page. **After the review the file is deleted** (KVKK: the document is not needed any more); the row stays, so the record of *which* document was checked remains.
+
+**Pages and API**
+
+| Route | What it does |
+| --- | --- |
+| `GET /register` | The registration page (Turkish, public): role cards, the fields of the chosen role, the document and the consent. |
+| `POST /register` | Checks everything; on success creates a `pending` account and its document and redirects to `/register/done`; otherwise shows the form again with a message under each wrong field, keeping what was typed (not the passwords, and the file must be chosen again). |
+| `GET /register/done` | "Your application was received" with the next steps. |
+| `GET /admin/registrations` | Review queue (English, management): pending accounts with their role fields and document; Approve, or Reject with a reason. |
+| `GET /admin/registrations/{user_id}/document` | Opens the document (only while it exists). |
+| `POST /admin/registrations/{user_id}/approve` · `/reject` | Decide; the file is deleted afterwards. |
+| `POST /api/register` | The same registration as JSON-answering multipart: `201` with the new account (no hash), `409` if the email or student number is taken, `422` with the reason otherwise. |
+| `GET /api/admin/registrations` · `POST .../{user_id}/approve` · `POST .../{user_id}/reject` | The review queue as JSON. |
+
+**Tested** (end to end, through the page and the API, everything removed afterwards): a student with a gmail address, a student year in the past, a missing student number, a weak password, two different passwords, no consent, no document, a text file named `.pdf`, a 5.3 MB file, an academic with a gmail address or without a title, staff without a position, a graduate year in the future and no role were all refused with the right message under the right field; a correct student registration redirected to `/register/done`; the same email (422 on the page, 409 on the API) and the same student number were refused; `admin` cannot register. The pending accounts were not in `/api/users` and could not apply (*"This account is pending, so it cannot apply to a job posting yet"*); the password was stored as `scrypt$16384$8$1$...`; the review queue listed them without any password field; the document opened as `application/pdf`; approving made the student active and removed the file (the document link then answers 404, a second approval 409); a rejection without a reason was refused and one with a reason stored it; deleting an account removed its file. Turkish names (`Şükrü Çağlayan Öztürk`) are stored as typed. `create-admin` made an admin whose password `verify_password` accepts (and a wrong one it refuses); a second one with the same email was refused.
+
+**Not in this task (written down so they are not forgotten):** email verification with a confirmation link (deferred); matching students and graduates against department lists, and e-Devlet barcode checks (discussed as later improvements). Signing in and protecting the review page came with the next two tasks (section 4.1.3).
+
+#### 4.1.3 Login, logout and the auth middleware
+
+> **Status:** applied by migration `0007`. Two tasks given in class: *"Login and logout"* and *"Auth middleware"*.
+
+**Login.** `/login` (Turkish, public) asks for the email and the password; "Beni hatırla" (remember me) keeps the session for 30 days instead of 12 hours. The answer never tells *which* of the two was wrong ("E-posta ya da şifre hatalı"), so the page cannot be used to find out who has an account. Only `active` accounts sign in; a `pending` account is told it is waiting for approval, a `rejected` one sees the reason. Users that existed before registration have no password; an admin gives them one with `python -m app.cli set-password --email ...`. After five wrong passwords for one email within 15 minutes, that email is refused for the rest of the 15 minutes (**429**); the counter lives in the app's memory, so a restart resets it.
+
+**Sessions are stored in the database** (not in a signed cookie), so logging out, deleting a user or an admin ending a session takes effect at once.
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `id` | `SERIAL` | `PRIMARY KEY` | |
+| `user_id` | `INTEGER` | `NOT NULL`, `REFERENCES users(id) ON DELETE CASCADE`, indexed (`ix_sessions_user_id`) | Whose session. Deleting the user ends their sessions. |
+| `token_hash` | `CHAR(64)` | `NOT NULL`, `UNIQUE` (`uq_sessions_token_hash`) | SHA-256 of the cookie's random token (`secrets.token_urlsafe(32)`). The token itself is never stored, so a copy of the table cannot be used to sign in. |
+| `created_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | |
+| `expires_at` | `TIMESTAMP` | `NOT NULL`, indexed (`ix_sessions_expires_at`) | 12 hours, or 30 days with "remember me". Expired rows are ignored and removed when the user signs in again. |
+| `last_seen_at` | `TIMESTAMP` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Updated at most once a minute. |
+| `user_agent` | `VARCHAR(200)` | nullable | The browser, to recognise one's own sessions later. |
+
+And `users.last_login_at TIMESTAMP` (nullable): when the user last signed in.
+
+**The cookie** is `alumni_session`: `HttpOnly` (scripts cannot read it), `SameSite=Lax` (another site cannot send a form with it), `Path=/`, `Secure` when `SESSION_COOKIE_SECURE=1` (set it once the site runs on HTTPS). **Logout** (`POST /logout`, a button, not a link, so a page cannot log you out by loading an image) deletes the session row and the cookie.
+
+**The auth middleware** (`app/middleware/auth.py`) runs on every request, inside the error guardians:
+
+1. It reads the cookie, finds the session (not expired) and its user, and lets only `active` users through as signed in; the user is then available to the controllers and the layout (navbar) for that request.
+2. It checks the address against the rules below, from the first match. A guest who needs to sign in is sent to `/login?next=...` (pages) or answered **401** (API); a signed-in user without the right gets **403** with a page or JSON that says which roles may.
+
+| Who may | Routes |
+| --- | --- |
+| Everyone, signed in or not | `/`, `/about`, `/login`, `/register`, `/register/done`, `/404`, `/static/*`, `/api/health`, `/api/login`, `/api/register`, the API docs (`/docs`, `/api/swagger`, `/openapi.json`), the course's demo routes (`/hello`, `/sum`) |
+| `admin` | `/admin/*`, `/api/admin/*`; deleting a user |
+| `staff`, `admin`, or the user themself | Editing a user (`staff` only students and graduates); only `admin` changes a role (checked by the controller) |
+| `staff`, `admin` | Adding a user |
+| `academic`, `staff`, `admin` | Publishing an announcement; editing or deleting one: its author or `admin` |
+| Everyone but `student` | Opening a job posting; editing, closing or deleting one: its poster, `staff` or `admin` |
+| `student`, `alumni` | Applying; the applicant is always the signed-in user |
+| The posting's owner, `staff`, `admin`; the applicant only to withdraw | Changing an application's status |
+| `admin` | Deleting an application |
+| Any signed-in user | Every other page and API route (lists and details) |
+
+What the controllers add, because only they know the record or the body: the author of a new announcement, the poster of a new job posting and the applicant are the signed-in user (an `admin` may choose another; `staff` may post for the department); an applicant may only set `withdrawn`; only an `admin` changes a role. Students and graduates do not see other users' email addresses (Table 2). Lists of applications show students and graduates only their own and those to their postings.
+
+**Tested** (end to end through the pages and the API, with an admin, a graduate, a student, an academic and a staff account; everything restored afterwards): guests reach the public pages, are sent from `/users` to `/login?next=/users`, get 401 from `/api/users` and still the 404 page for an unknown address; the guest navbar shows only Home, About and API Docs. A wrong password and an unknown email get the same message; `next=//evil.com` goes to `/` while `next=/job-postings` goes there; the cookie is `HttpOnly; SameSite=lax; Path=/` and the database holds a 64-character hash. A graduate sees other users' emails hidden, cannot publish (403) or open the admin page (403), opens a posting that stays theirs even when the request names another poster, cannot edit someone else's posting (403) or hand theirs over (403). A student cannot open a posting (403), applies as themself whatever `user_id` says, cannot accept their own application (403) but can withdraw it; the posting's owner moves it to interview; the student sees only their own application and cannot delete it (403). An academic publishes as themself and cannot edit another's announcement (403); staff edit a student but not an academic, cannot change a role or delete a user (403). The admin reaches the review page and sees "Approvals". A pending account cannot sign in (403) and its old session stops working at once (401); the sixth try after five wrong passwords is refused (429); logout ends the session and `/users` sends to the login page again.
+
+**Still open:** a page to see and end one's own sessions; throttling that survives a restart; CSRF tokens (the `SameSite=Lax` cookie already stops cross-site form posts); email verification (deferred).
 
 ### 4.2 `announcements`
 
@@ -460,8 +577,10 @@ Migrations are managed with [Alembic](https://alembic.sqlalchemy.org/). Each mig
 | `0003` | `migrations/versions/0003_create_applications.py` | Creates `applications` (section 4.4) with its two foreign keys, the unique pair and the index. Downgrade drops the table. Depends on `0002`, because it references both `users` and `job_postings`. | Applied |
 | `0004` | `migrations/versions/0004_job_posting_validation_rules.py` | Applies the job posting validation rules of section 4.3.1: `title` to `VARCHAR(120)`, `location` renamed to `city`, `description` nullable, `CHECK (description IS NOT NULL OR application_url IS NOT NULL)`. Downgrade reverses it. Depends on `0003`. | Applied |
 | `0005` | `migrations/versions/0005_user_roles.py` | Applies section 4.1.1: adds `users.role` (default `alumni`, `ck_users_role`, `ix_users_role`), makes `graduation_year` nullable with `ck_users_graduation_year_by_role`; creates a `staff` user for each existing announcement author, adds `announcements.author_id` (with `ix_announcements_author_id`), links the announcements and drops `author`. Downgrade restores `author` from the users' names and removes the office accounts it created. Depends on `0004`. | Applied |
+| `0006` | `migrations/versions/0006_registration.py` | Applies section 4.1.2: adds to `users` the `status` (default `active`, `ck_users_status`, `ix_users_status`), `password_hash`, `student_number` (`uq_users_student_number`), `title`, `position`, `consent_at`, `reviewed_at`, `reviewed_by_user_id` and `rejection_reason` (`ck_users_rejection_reason`); creates `registration_documents`. Downgrade drops them and removes the accounts that were never approved. Depends on `0005`. | Applied |
+| `0007` | `migrations/versions/0007_sessions.py` | Applies section 4.1.3: creates `sessions` (`uq_sessions_token_hash`, `ix_sessions_user_id`, `ix_sessions_expires_at`, `ON DELETE CASCADE` to `users`) and adds `users.last_login_at`. Downgrade drops them. Depends on `0006`. | Applied |
 
-`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied and the existing rows were untouched. Later `0004` (job posting validation rules) and `0005` (user roles, announcement authors; tested first on a temporary database, section 4.1.1) were applied the same way, and `alembic current` now shows `0005 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
+`alembic upgrade head` applies the migrations that are missing, in order. It was run on the existing database (which already held 20 users and 10 announcements from the seeder): `0002` and `0003` were applied and the existing rows were untouched. Later `0004` (job posting validation rules) `0005` (user roles, announcement authors; tested first on a temporary database, section 4.1.1) `0006` (registration, section 4.1.2) and `0007` (sessions, section 4.1.3), each tested the same way, were applied the same way, and `alembic current` now shows `0007 (head)`. `alembic check` reports "No new upgrade operations detected", so the ORM models match the real tables.
 
 | Command (run in the project folder) | Meaning |
 | --- | --- |
@@ -629,6 +748,6 @@ These routes were tested against a temporary database with all three migrations 
 - Column names use `snake_case`: `graduation_year`, `created_at`.
 - Every table has an `id` primary key plus `created_at` and `updated_at` columns.
 - Foreign keys are named `<role>_<table>_id` when the role matters: `posted_by_user_id` says both which table it points to and why.
-- Indexes are named `ix_<table>_<column>`; unique constraints `uq_<table>_<columns>`; check constraints `ck_<table>_<rule>` (`ck_users_role`, `ck_users_graduation_year_by_role`).
+- Indexes are named `ix_<table>_<column>`; unique constraints `uq_<table>_<columns>`; check constraints `ck_<table>_<rule>` (`ck_users_role`, `ck_users_graduation_year_by_role`, `ck_users_status`).
 - Fixed lists (role, employment type, status) are stored as lowercase `snake_case` text checked by a `CHECK`, not as numbers: `alumni`, `under_review`, `full_time`. The pages turn them into labels.
 - A foreign key to the user who did something is named after the act or the role: `posted_by_user_id` (job postings), `author_id` (announcements, planned).

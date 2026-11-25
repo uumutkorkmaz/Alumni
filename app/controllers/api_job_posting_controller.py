@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
+from app import policy
 from app.models import job_posting as job_posting_model
 from app.models.job_posting import JobPostingBase, JobPostingCreate, JobPostingUpdate
 
@@ -31,6 +32,7 @@ class ApiJobPostingController:
 
     # Direct routes
     def create(self, data: JobPostingCreate) -> dict:
+        data.posted_by_user_id = policy.poster_for(data.posted_by_user_id)
         return job_posting_model.create_job_posting(data)
 
     def list_all(self) -> list[dict]:
@@ -40,9 +42,13 @@ class ApiJobPostingController:
         return job_posting_model.get_job_posting(posting_id)
 
     def replace(self, posting_id: int, data: JobPostingCreate) -> dict:
+        if not policy.is_admin():  # only an admin hands a posting to someone else
+            data.posted_by_user_id = job_posting_model.get_job_posting(posting_id)["posted_by_user_id"]
         return job_posting_model.update_job_posting(posting_id, data)
 
     def update(self, posting_id: int, data: JobPostingUpdate) -> dict:
+        if "posted_by_user_id" in data.model_fields_set and not policy.is_admin():
+            raise HTTPException(status_code=403, detail="Only an admin changes who posted a job posting")
         return job_posting_model.partial_update_job_posting(posting_id, data)
 
     def delete(self, posting_id: int) -> dict:

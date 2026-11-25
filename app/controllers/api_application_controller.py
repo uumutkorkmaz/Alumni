@@ -1,6 +1,9 @@
 from fastapi import APIRouter
 
+from app import policy
+from app.controllers.application_controller import _check_status
 from app.models import application as application_model
+from app.models import job_posting as job_posting_model
 from app.models.application import (
     ApplicationCreate,
     ApplicationUpdate,
@@ -45,15 +48,17 @@ class ApiApplicationController:
 
     # Direct routes
     def create(self, data: ApplicationCreate) -> dict:
-        return application_model.create_application(data.user_id, data.job_posting_id, data.cover_letter)
+        # The applicant is the signed-in student or graduate, whatever user_id says (ddd.md 4.1.3).
+        return application_model.create_application(policy.applicant(), data.job_posting_id, data.cover_letter)
 
     def list_all(self) -> list[dict]:
-        return application_model.get_applications()
+        return _visible(application_model.get_applications())
 
     def get(self, application_id: int) -> dict:
         return application_model.get_application(application_id)
 
     def update(self, application_id: int, data: ApplicationUpdate) -> dict:
+        _check_status(application_id, data.status)
         return application_model.update_application(application_id, data)
 
     def delete(self, application_id: int) -> dict:
@@ -62,7 +67,7 @@ class ApiApplicationController:
 
     # Nested under a user (the user in the path is the applicant)
     def list_for_user(self, user_id: int) -> list[dict]:
-        return application_model.get_applications(user_id=user_id)
+        return _visible(application_model.get_applications(user_id=user_id))
 
     def create_for_user(self, user_id: int, data: UserApplicationCreate) -> dict:
         return application_model.create_application(user_id, data.job_posting_id, data.cover_letter)
@@ -76,13 +81,19 @@ class ApiApplicationController:
 
     # Nested under a job posting (the posting in the path is the one applied to)
     def list_for_posting(self, posting_id: int) -> list[dict]:
-        return application_model.get_applications(job_posting_id=posting_id)
+        return _visible(application_model.get_applications(job_posting_id=posting_id))
 
     def create_for_posting(self, posting_id: int, data: PostingApplicationCreate) -> dict:
-        return application_model.create_application(data.user_id, posting_id, data.cover_letter)
+        return application_model.create_application(policy.applicant(), posting_id, data.cover_letter)
 
     def get_for_posting(self, posting_id: int, application_id: int) -> dict:
         return application_model.get_application(application_id, job_posting_id=posting_id)
 
     def update_for_posting(self, posting_id: int, application_id: int, data: ApplicationUpdate) -> dict:
+        _check_status(application_id, data.status)
         return application_model.update_application(application_id, data, job_posting_id=posting_id)
+
+
+def _visible(applications: list[dict]) -> list[dict]:
+    postings = {p["id"]: p for p in job_posting_model.get_job_postings()}
+    return policy.visible_applications(applications, postings)

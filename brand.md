@@ -191,6 +191,9 @@ Every page is built by `render_page` in `app/views/layout.py`: the same navbar, 
 | Small button | `.btn-sm` | Inside table rows. |
 | Navbar link | `.nav-links a` | `--muted`; hover `--text` on `--panel`; the active page `--text` with a 2 px gold underline that slides in from the left. |
 | Badge | `.badge` (+ status class) | Short status words with the colours of section 4.3. |
+| Register button | `.nav-cta` | The navbar's one call to action for guests: "Register" with a gold hairline, next to "Giriş yap". |
+| Navbar account | `.nav-user` | For a signed-in user: avatar, first name and role in a pill, and a "Çıkış" button (see DESIGN.md §4). |
+| Role card | `.role-card` | The role choice on the registration page: a radio card with the role and the email it needs; the chosen one gets a green border and a gold underline. |
 | Role badge | `.badge.role-<role>` | A user's role: student (navy), graduate (green), academic (gold), staff (neutral), admin (soft red); see DESIGN.md §4. |
 | Alert | `.alert .alert-error` | Text `#f3d9d6` on `#2a1714`, border `--danger` at 40 %: a refused action at the top of the page, the reason in plain words. |
 | Card | `.card` | Groups one form, one detail or one list. A featured card may have the brand gradient as a 3 px top edge. |
@@ -208,7 +211,7 @@ Every page is built by `render_page` in `app/views/layout.py`: the same navbar, 
 - **Own server mistakes.** A 5xx says it is our fault, not the user's: "This is our mistake, not yours", with an error id to report.
 - **No internals for users.** No stack traces, SQL or file paths on a page; those go to `logs/error.logs`.
 - **Academic, not salesy.** No exclamation marks, no hype ("amazing", "revolutionary"); the tone of a well-run department office.
-- **Language.** The management pages, the API and the error messages are in English. The home page and the About page are in Turkish. Inside one page, do not mix the two.
+- **Language.** The management pages, the API and the error messages are in English. The public pages (home, About and the registration pages) are in Turkish, including the registration's field messages. Inside one page, do not mix the two.
 - **Numbers and dates.** Dates as `YYYY-MM-DD`, times as `HH:MM`; counts with their noun ("3 postings · 2 open").
 
 ## 11. Applying the palette

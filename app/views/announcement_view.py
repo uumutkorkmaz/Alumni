@@ -2,6 +2,8 @@ from html import escape
 
 from datetime import date
 
+from app import policy
+from app.auth import me
 from app.views.layout import (
     back_link,
     button,
@@ -33,7 +35,7 @@ def _row(a: dict) -> str:
         f'<tr><td class="id">#{a["id"]}</td>'
         f'<td><a href="{base}">{escape(a["title"])}</a><span class="excerpt">{_excerpt(a.get("content") or "")}</span></td>'
         f"<td>{escape(a['author'])}</td><td class=\"date\">{a['created_at']}</td>"
-        f'<td class="col-actions">{row_actions(base, "announcement")}</td></tr>'
+        f'<td class="col-actions">{row_actions(base, "announcement", policy.can_edit_announcement(a), policy.can_edit_announcement(a))}</td></tr>'
     )
 
 
@@ -56,7 +58,7 @@ def render_announcement_list(announcements: list[dict], authors: list[dict]) -> 
         "Notice board",
         "News for <em>graduates</em>",
         "Announcements from the department and the faculty: news, events and notices for MIS graduates.",
-        new_button("New announcement") + button("Job postings", "/job-postings"),
+        (new_button("New announcement") if policy.can_publish() else "") + button("Job postings", "/job-postings"),
     )}
     {stats}
     {filter_toolbar("announcements-table", plural(len(announcements), "announcement"))}
@@ -67,7 +69,7 @@ def render_announcement_list(announcements: list[dict], authors: list[dict]) -> 
       </table>
     </div>
 
-    {form_card("Publish an announcement", _announcement_form("/announcements", authors), "Visible to everyone")}
+    {form_card("Publish an announcement", _announcement_form("/announcements", authors), "Visible to everyone") if policy.can_publish() else ""}
     """
     return render_page("Announcements", body, ACTIVE)
 
@@ -79,7 +81,8 @@ def render_announcement_detail(announcement: dict) -> str:
         f"Announcement #{a['id']}",
         escape(a['title']),
         "",
-        button("Edit", f"/announcements/{a['id']}/edit", "primary") + button("All announcements", "/announcements"),
+        (button("Edit", f"/announcements/{a['id']}/edit", "primary") if policy.can_edit_announcement(a) else "")
+        + button("All announcements", "/announcements"),
         meta=f'<span>By {escape(a["author"])}</span><span class="mono">{a["created_at"]}</span>',
         size="compact",
     )}
@@ -114,14 +117,23 @@ def _announcement_form(action: str, authors: list[dict], announcement: dict | No
         f'{escape(u["name"])} ({u["role"]})</option>'
         for u in authors
     ) or '<option value="" disabled selected>No academic, staff or admin account yet</option>'
+    # Only an admin names the author; everyone else publishes as themself (ddd.md 4.1.3).
+    if policy.is_admin():
+        author_field = (
+            '<div class="field"><label for="author_id">Author (academic, staff or admin)</label>'
+            f'<select id="author_id" name="author_id" required>{author_options}</select></div>'
+        )
+    else:
+        user = me()
+        shown = escape(a.get("author") or (user["name"] if user else ""))
+        author_field = f'<div class="field"><span class="label-like">Author</span><p class="fixed-value">{shown}</p></div>'
     submit_label = "Save changes" if announcement else "Publish"
     cancel = f'<a class="btn btn-ghost" href="/announcements/{a["id"]}">Cancel</a>' if announcement else ""
     return f"""
     <form class="form-grid" method="post" action="{action}">
       <div class="field"><label for="title">Title</label>
         <input id="title" type="text" name="title" value="{value('title')}" maxlength="200" required /></div>
-      <div class="field"><label for="author_id">Author (academic, staff or admin)</label>
-        <select id="author_id" name="author_id" required>{author_options}</select></div>
+      {author_field}
       <div class="field full"><label for="content">Content</label>
         <textarea id="content" name="content" rows="7" required>{value('content')}</textarea></div>
       <div class="form-actions"><button type="submit" class="btn btn-primary">{submit_label}</button>{cancel}</div>

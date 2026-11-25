@@ -14,7 +14,7 @@ A backend system to track Management Information Systems (MIS) graduates, built 
 - [Environment Variables](#environment-variables)
 - [Database, Migrations and Seeding](#database-migrations-and-seeding)
 - [Pages and API Endpoints](#pages-and-api-endpoints)
-- [Middleware: the request pipeline](#middleware-the-request-pipeline) (logger, 404 guardian, generic 404 page, 5xx guardian, error log)
+- [Middleware: the request pipeline](#middleware-the-request-pipeline) (logger, 404 guardian, generic 404 page, 5xx guardian, error log, auth)
 - [Project Architecture (MVC)](#project-architecture-mvc)
 - [Troubleshooting](#troubleshooting)
 - [Progress](#progress)
@@ -72,6 +72,9 @@ Configuration and secrets (database user, password, ports) are not hard-coded in
 | `DATABASE_URL` | `api` | Connection string: `postgresql://USER:PASSWORD@db:5432/DB_NAME`. Keep it consistent with the three `POSTGRES_*` values above. It always uses `db:5432` (inside Docker), whatever `POSTGRES_PORT` is. |
 | `TZ` | `api` | Time zone of the app container, used by the request log (default `Europe/Istanbul`). |
 | `DEBUG_ROUTES` | `api` | `1` adds the test-only route `GET /api/debug/error`, which fails on purpose to show the 5xx guardian. Default `0`; keep it `0` wherever real users can reach the app. |
+| `STUDENT_EMAIL_DOMAIN` | `api` | Students register with an address on this domain (default `ogr.iu.edu.tr`). |
+| `STAFF_EMAIL_DOMAIN` | `api` | Academic and administrative staff register with an address on this domain (default `istanbul.edu.tr`). Graduates may use any address. |
+| `SESSION_COOKIE_SECURE` | `api` | `1` sends the session cookie only over HTTPS; keep `0` on `http://localhost`. |
 
 > If you add a new variable, add it to both `.env` and `.env.example`. Never commit `.env`.
 > `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` only take effect when the `pgdata` volume is created for the first time. To apply new values to an existing volume, run `docker compose down -v` (this deletes the stored database data).
@@ -123,6 +126,15 @@ The app is connected to PostgreSQL. The pages and the JSON API of each resource 
 | --- | --- | --- |
 | GET | `/` | Home page: a scroll film on desktops (the walk from Beyazıt Square through the main gate to the Rectorate plays as you scroll; a still picture on phones) carrying what the system does, live counters (graduates, job postings and how many are open, applications, announcements), the newest open job postings, the latest announcements and "how it works" in three steps; still opens when the database is down (counters show a dash, the lists show a note) |
 | GET | `/about` | About page |
+| GET | `/login` | Login (Turkish, public): email, password, "remember me"; `?next=` brings you back to the page you wanted |
+| POST | `/login` | Signs in and sets the session cookie, or shows the form again with the reason |
+| POST | `/logout` | Signs out (the navbar's button) |
+| GET | `/register` | Registration (Turkish, public): role cards (student, graduate, academic, staff), the fields of the chosen role, password, document upload, consent ([ddd.md 4.1.2](ddd.md#412-registration)) |
+| POST | `/register` | Creates a pending account and its document, or shows the form again with a message under each wrong field |
+| GET | `/register/done` | "Your application was received" |
+| GET | `/admin/registrations` | Review queue: pending accounts with their document; Approve, or Reject with a reason (open until the login task) |
+| GET | `/admin/registrations/{user_id}/document` | Opens the uploaded document (deleted after the review) |
+| POST | `/admin/registrations/{user_id}/approve` · `/reject` | Decide on a registration |
 | GET | `/404` | Generic 404 page; invalid browser requests are redirected here (answers 404) |
 | GET | `/api/health` | Health check |
 | GET | `/api/swagger` | Redirects to Swagger UI (`/docs`) |
@@ -170,6 +182,13 @@ Every page shares one navbar (Home, About, Users, Announcements, Job Postings, A
 | PUT | `/api/users/{id}` | Replace a user (all fields required) |
 | PATCH | `/api/users/{id}` | Partially update a user |
 | DELETE | `/api/users/{id}` | Delete a user |
+| POST | `/api/login` | Sign in with `{"email", "password", "remember"}`: `200` with the user and the session cookie; `401` wrong email or password; `403` pending or rejected; `429` too many tries (`ApiAuth` tag) |
+| POST | `/api/logout` | Sign out |
+| GET | `/api/me` | The signed-in user (`401` for a guest) |
+| POST | `/api/register` | Register (multipart: the fields and `document`): `201` pending account, `409` email or student number taken, `422` with one message per field (`ApiRegister` tag) |
+| GET | `/api/admin/registrations` | Pending registrations |
+| POST | `/api/admin/registrations/{user_id}/approve` | Approve (the account becomes `active`, the file is deleted) |
+| POST | `/api/admin/registrations/{user_id}/reject` | Reject with `{"reason": "..."}` |
 | GET | `/api/announcements` | List all announcements (`ApiAnnouncement` tag in Swagger) |
 | GET | `/api/announcements/{id}` | Get a single announcement |
 | POST | `/api/announcements` | Create an announcement |
@@ -209,8 +228,8 @@ Every page shares one navbar (Home, About, Users, Announcements, Job Postings, A
 A **middleware** runs around every request: before the route's controller runs and after its answer is ready. Four of them shape what leaves the app (`app/middleware/`, registered in `app/main.py`):
 
 ```
-request ─► logger ─► 5xx guardian ─► 404 guardian ─► route ─► controller ─► model ─► database
-answer  ◄─ logger ◄─ 5xx guardian ◄─ 404 guardian ◄─ ...
+request ─► logger ─► 5xx guardian ─► 404 guardian ─► auth ─► route ─► controller ─► model ─► database
+answer  ◄─ logger ◄─ 5xx guardian ◄─ 404 guardian ◄─ auth ◄─ ...
 ```
 
 | Middleware | File | Job |
@@ -218,8 +237,19 @@ answer  ◄─ logger ◄─ 5xx guardian ◄─ 404 guardian ◄─ ...
 | Logger | `logger.py` | Writes one line per request on the terminal: time, method, route, status, duration. |
 | 404 guardian | `not_found_guardian.py` | Every 404 answers with a **reason**; invalid browser requests are redirected to the generic `/404` page. |
 | 5xx guardian | `server_error_guardian.py` | A server failure answers 500/503 with a reason and an **error id**, never with a traceback; the details go to `logs/error.logs`. |
+| Auth | `auth.py` | Turns the session cookie into the signed-in user and checks the address against the role rules: guests go to `/login` (pages) or get 401 (API); a role without the right gets 403. See [Auth middleware](#auth-middleware-login-and-logout). |
 
-The middleware added last runs outermost, so `main.py` adds them from the inside out: the 404 guardian, then the 5xx guardian (it also catches a failure inside the 404 guardian), then the logger (it sees and logs the final answer).
+The middleware added last runs outermost, so `main.py` adds them from the inside out: auth, the 404 guardian, then the 5xx guardian (it also catches a failure inside the ones within it), then the logger (it sees and logs the final answer).
+
+### Auth middleware, login and logout
+
+Details and the full rule table: [ddd.md 4.1.3](ddd.md#413-login-logout-and-the-auth-middleware).
+
+- **Sign in** at `/login` (or `POST /api/login` with `{"email", "password", "remember"}` for Postman and Swagger; the session cookie is kept and sent with the next requests). **Sign out** with the button in the navbar (`POST /logout`) or `POST /api/logout`. `GET /api/me` shows who is signed in.
+- **Sessions** are rows in `sessions`; the cookie `alumni_session` (HttpOnly, SameSite=Lax) holds a random token whose SHA-256 is all the database keeps. 12 hours, or 30 days with "Beni hatırla". Only `active` accounts sign in. Five wrong passwords for one email lock it for 15 minutes.
+- **Public without signing in:** `/`, `/about`, `/login`, `/register`, `/404`, static files, `/api/health`, `/api/login`, `/api/register`, the API docs and the course's demo routes. **Everything else needs signing in**, and some actions a role: only academics, staff and admins publish announcements; students do not open job postings; only students and graduates apply (always as themselves); editing is for the owner, staff or an admin as the table says; only an admin deletes users, gives roles and reviews registrations.
+- **The pages show only what you may do** (no Edit or Delete you cannot use, no create form for a role that cannot create); students and graduates do not see other users' email addresses.
+- **Users from before registration have no password.** Give one: `docker compose exec api python -m app.cli set-password --email someone@example.com` (asked twice, not shown). The first admin: `docker compose exec api python -m app.cli create-admin --name "Ad Soyad" --email ...`.
 
 ### Request logging (logger middleware)
 
@@ -315,10 +345,19 @@ AlumniTrackingSystem/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                                  # Creates the app, adds the middleware, wires the routers, /, /about, /404
+│   ├── security.py                              # Password hashing (scrypt) for registration and login
+│   ├── auth.py                                  # Login, logout, sessions, the signed-in user of the request
+│   ├── policy.py                                # Who may do what: used by controllers and views (ddd.md 4.1.3)
+│   ├── cli.py                                   # python -m app.cli create-admin (admins cannot register)
 │   ├── controllers/
 │   │   ├── __init__.py
 │   │   ├── user_controller.py                   # UserController -> HTML pages under /users
 │   │   ├── api_user_controller.py               # ApiUserController -> JSON under /api/users
+│   │   ├── register_controller.py               # RegisterController -> /register pages
+│   │   ├── login_controller.py                  # LoginController -> /login, /logout
+│   │   ├── api_auth_controller.py               # ApiAuthController -> /api/login, /api/logout, /api/me
+│   │   ├── admin_registration_controller.py     # AdminRegistrationController -> /admin/registrations review queue
+│   │   ├── api_register_controller.py           # ApiRegisterController -> /api/register and /api/admin/registrations
 │   │   ├── announcement_controller.py           # AnnouncementController -> HTML pages under /announcements
 │   │   ├── api_announcement_controller.py       # ApiAnnouncementController -> JSON under /api/announcements
 │   │   ├── job_posting_controller.py            # JobPostingController -> HTML pages under /job-postings
@@ -327,6 +366,7 @@ AlumniTrackingSystem/
 │   │   └── api_application_controller.py        # ApiApplicationController -> direct + nested (user, posting) JSON routes
 │   ├── middleware/
 │   │   ├── __init__.py
+│   │   ├── auth.py                              # Auth middleware: signed-in user, role rules, 401/403
 │   │   ├── logger.py                            # Logger: one terminal line per request
 │   │   ├── not_found_guardian.py                # 404 guardian: reasons, redirect of invalid browser requests to /404
 │   │   └── server_error_guardian.py             # 5xx guardian: 500/503 with a reason and an error id; writes logs/error.logs
@@ -339,7 +379,9 @@ AlumniTrackingSystem/
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── base.py                              # SQLAlchemy Base for all ORM models
-│   │   ├── user.py                              # User ORM model, schemas + CRUD on the users table
+│   │   ├── user.py                              # User ORM model, roles, schemas + CRUD on the users table
+│   │   ├── registration.py                      # Registration rules by role, the document, the admin review
+│   │   ├── session.py                           # Session ORM model (the sessions table)
 │   │   ├── announcement.py                      # Announcement ORM model, schemas + CRUD on the announcements table
 │   │   ├── job_posting.py                       # JobPosting ORM model, schemas, validation rules + functions
 │   │   └── application.py                       # Application ORM model, schemas + functions
@@ -348,6 +390,9 @@ AlumniTrackingSystem/
 │   │   ├── layout.py                            # Shared page skeleton: fonts, navbar, footer, motion script, helpers (render_page, page_hero, stat_tiles, ...)
 │   │   ├── home_view.py                         # HTML for the home page
 │   │   ├── user_view.py                         # HTML for user list/detail/edit pages
+│   │   ├── register_view.py                     # HTML for /register (Turkish) and its page script
+│   │   ├── login_view.py                        # HTML for /login (Turkish)
+│   │   ├── admin_registration_view.py           # HTML for the review queue
 │   │   ├── announcement_view.py                 # HTML for announcement list/detail/edit pages
 │   │   ├── job_posting_view.py                  # HTML for job posting list/detail/edit pages
 │   │   ├── application_view.py                  # HTML for the application list page
@@ -360,6 +405,7 @@ AlumniTrackingSystem/
 │   └── templates/                               # Page body of /about (the layout adds navbar and footer)
 │       └── about.html
 ├── logs/                                        # error.logs (git ignored), written by the 5xx guardian
+├── uploads/                                     # registration documents (git ignored, personal data; deleted after review)
 ├── migrations/                                  # Alembic migrations (database schema)
 │   ├── env.py
 │   ├── script.py.mako
@@ -421,6 +467,6 @@ Work in progress: built incrementally week by week.
 | Item | State |
 | --- | --- |
 | **User roles** (`student`, `alumni`, `academic`, `staff`, `admin`) | **Built**: migration `0005`, role rules in the models (who may publish, post, apply), role badges and lists on the pages ([ddd.md §4.1.1](ddd.md#411-roles-and-permissions)). The permission table (who may do what) waits for the login. |
-| **Registration** | Planned for the register task: students sign up with their student email, academic and administrative staff with an `@istanbul.edu.tr` address, graduates with any email; everyone uploads a document (student certificate, graduation document, staff ID) and an admin approves the account before it can use the site. |
+| **Registration** | **Built** ([ddd.md §4.1.2](ddd.md#412-registration), migration `0006`): students sign up with their `@ogr.iu.edu.tr` address, academic and administrative staff with an `@istanbul.edu.tr` address, graduates with any email; everyone uploads a document and an admin approves the account at `/admin/registrations`. The first admin: `docker compose exec api python -m app.cli create-admin --name "..." --email ...`. |
 | **Email verification** (confirmation link) | **Deferred to a later task** by decision: the first version of registration does not send a confirmation email. |
-| **Login, sessions and permission checks** | A later task; the permission table in ddd.md §4.1.1 is enforced then. |
+| **Login, logout and the auth middleware** | **Built** ([ddd.md §4.1.3](ddd.md#413-login-logout-and-the-auth-middleware), migration `0007`): sessions in the database, role rules on every request, the pages show only what each role may do. Still open: a page to end one's own sessions, throttling that survives a restart, CSRF tokens. |

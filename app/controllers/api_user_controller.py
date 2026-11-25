@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app import policy
 from app.models import user as user_model
 from app.models.user import Role, UserCreate, UserUpdate
 
@@ -17,19 +18,22 @@ class ApiUserController:
         self.router.add_api_route("/{user_id}", self.delete, methods=["DELETE"])
 
     def create(self, data: UserCreate) -> dict:
+        policy.check_role_change(None, data.role)
         return user_model.create_user(data)
 
     def list(self, role: Role | None = None) -> list[dict]:
         """All users; ?role=staff (student, alumni, academic, staff, admin) keeps one role."""
-        return user_model.get_users(role)
+        return policy.hide_emails(user_model.get_users(role))
 
     def get(self, user_id: int) -> dict:
-        return user_model.get_user(user_id)
+        return policy.hide_emails([user_model.get_user(user_id)])[0]
 
     def replace(self, user_id: int, data: UserCreate) -> dict:
+        policy.check_role_change(user_model.get_user(user_id)["role"], data.role)
         return user_model.update_user(user_id, data)
 
     def update(self, user_id: int, data: UserUpdate) -> dict:
+        policy.check_role_change(user_model.get_user(user_id)["role"], data.role)
         return user_model.partial_update_user(user_id, data)
 
     def delete(self, user_id: int) -> dict:

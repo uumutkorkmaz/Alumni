@@ -1,5 +1,7 @@
 from html import escape
 
+from app import policy
+from app.auth import me
 from app.models.user import ROLE_LABELS, ROLES
 from app.views.layout import (
     back_link,
@@ -41,10 +43,10 @@ def _row(user: dict) -> str:
         f'<tr><td class="id">#{user["id"]}</td>'
         f'<td><div class="cell-title"><span class="avatar" aria-hidden="true">{initials(user["name"])}</span>'
         f'<a href="{base}">{escape(user["name"])}</a></div></td>'
-        f'<td class="muted">{escape(user["email"])}</td>'
+        f'<td class="muted">{escape(user["email"]) if user["email"] else "hidden"}</td>'
         f'<td>{role_badge(user["role"])}</td>'
         f'<td class="date">{user["graduation_year"] or "&ndash;"}</td><td>{escape(user["department"])}</td>'
-        f'<td class="col-actions">{row_actions(base, "user")}</td></tr>'
+        f'<td class="col-actions">{row_actions(base, "user", policy.can_edit_user(user), policy.can_delete_user())}</td></tr>'
     )
 
 
@@ -77,14 +79,14 @@ def _card(user: dict, i: int) -> str:
         f'<span class="album-name">{escape(user["name"])}</span>'
         f'<span class="album-meta">{"Student &middot; " if user["role"] == "student" else ""}'
         f'{_year_text(user)} &middot; {escape(user["department"])}</span>'
-        f'<span class="album-mail">{escape(user["email"])}</span>'
+        f'<span class="album-mail">{escape(user["email"] or "")}</span>'
         "</span></a>"
-        f'<div class="album-actions">{row_actions(base, "user")}</div>'
+        f'<div class="album-actions">{row_actions(base, "user", policy.can_edit_user(user), policy.can_delete_user())}</div>'
         "</li>"
     )
 
 
-def render_user_list(users: list[dict]) -> str:
+def render_user_list(users: list[dict], pending: int = 0) -> str:
     rows = "".join(_row(u) for u in users) or (
         '<tr><td class="empty" colspan="7">No users yet. Add the first one below.</td></tr>'
     )
@@ -126,7 +128,10 @@ def render_user_list(users: list[dict]) -> str:
         "Directory &middot; Graduates",
         "The class <em>album</em>",
         "Istanbul University MIS students and graduates, with their class and department, and the academic and administrative staff who share opportunities with them. Switch to the table to see everyone with their role.",
-        new_button("New user") + button("Applications", "/applications"),
+        (new_button("New user") if policy.can_add_user() else "")
+        + (button(f"Registrations to review ({pending})" if pending else "Registrations", "/admin/registrations")
+           if policy.is_admin() else "")
+        + button("Applications", "/applications"),
     )}
     {stats}
     {filter_toolbar("users-album users-table", plural(len(users), "user"), views)}
@@ -142,7 +147,7 @@ def render_user_list(users: list[dict]) -> str:
       </table>
     </div>
 
-    {form_card("Add user", _user_form(action="/users"), "Year required for students and graduates")}
+    {form_card("Add user", _user_form(action="/users"), "Year required for students and graduates") if policy.can_add_user() else ""}
     """
     return render_page("Users", body, ACTIVE)
 
@@ -153,12 +158,13 @@ def render_user_detail(user: dict) -> str:
         f"User #{user['id']} &middot; {ROLE_LABELS[user['role']]}" + (f" &middot; {_year_text(user)}" if user['graduation_year'] else ""),
         escape(user['name']),
         escape(user['department']),
-        button("Edit", f"/users/{user['id']}/edit", "primary") + button("Applications", "/applications"),
+        (button("Edit", f"/users/{user['id']}/edit", "primary") if policy.can_edit_user(user) else "")
+        + button("Applications", "/applications"),
         size="compact",
     )}
     <section class="card card-featured" data-reveal>
       <dl class="dl">
-        <dt>Email</dt><dd><a href="mailto:{escape(user['email'])}">{escape(user['email'])}</a></dd>
+        <dt>Email</dt><dd>{f'<a href="mailto:{escape(user["email"])}">{escape(user["email"])}</a>' if user['email'] else '<span class="muted">Hidden: only staff, academics and the user see it</span>'}</dd>
         <dt>Role</dt><dd>{role_badge(user['role'])}</dd>
         <dt>{"Expected graduation" if user['role'] == "student" else "Graduation year"}</dt><dd class="mono">{user['graduation_year'] or "&ndash;"}</dd>
         <dt>Department</dt><dd>{escape(user['department'])}</dd>
@@ -187,8 +193,15 @@ def _user_form(action: str, user: dict | None = None) -> str:
         return escape(str(u.get(key, "")))
 
     current = u.get("role", "alumni")
+    # Only an admin gives any role; staff add students and graduates; otherwise the role stays.
+    if policy.is_admin():
+        allowed = ROLES
+    elif user is None:
+        allowed = ("student", "alumni")
+    else:
+        allowed = (current,)
     role_options = "".join(
-        f'<option value="{r}"{" selected" if r == current else ""}>{ROLE_LABELS[r]}</option>' for r in ROLES
+        f'<option value="{r}"{" selected" if r == current else ""}>{ROLE_LABELS[r]}</option>' for r in allowed
     )
     submit_label = "Save changes" if user else "Create user"
     cancel = f'<a class="btn btn-ghost" href="/users/{u["id"]}">Cancel</a>' if user else ""

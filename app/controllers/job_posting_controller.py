@@ -4,6 +4,7 @@ from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
+from app import policy
 from app.models import application as application_model
 from app.models import job_posting as job_posting_model
 from app.models import user as user_model
@@ -106,7 +107,9 @@ class JobPostingController:
             application_url, deadline, is_active, posted_by_user_id,
         )
         try:
-            job_posting_model.create_job_posting(_build_posting(values))
+            posting = _build_posting(values)
+            posting.posted_by_user_id = policy.poster_for(posting.posted_by_user_id)
+            job_posting_model.create_job_posting(posting)
         except PostingFormError as error:
             # Show the same page again, with the message and what the user typed.
             page = render_job_posting_list(
@@ -141,7 +144,10 @@ class JobPostingController:
             application_url, deadline, is_active, posted_by_user_id,
         )
         try:
-            job_posting_model.update_job_posting(posting_id, _build_posting(values))
+            posting = _build_posting(values)
+            if not policy.is_admin():  # only an admin hands a posting to someone else
+                posting.posted_by_user_id = job_posting_model.get_job_posting(posting_id)["posted_by_user_id"]
+            job_posting_model.update_job_posting(posting_id, posting)
         except PostingFormError as error:
             job_posting_model.get_job_posting(posting_id)  # 404 if the posting does not exist
             page = render_job_posting_edit_form(
@@ -154,10 +160,11 @@ class JobPostingController:
         job_posting_model.delete_job_posting(posting_id)
         return RedirectResponse(url="/job-postings", status_code=303)
 
-    def apply(self, posting_id: int, user_id: int = Form(...), cover_letter: str = Form("")) -> HTMLResponse:
-        """Apply from the posting's own page. A refused application (duplicate, closed) shows a message on the page."""
+    def apply(self, posting_id: int, cover_letter: str = Form("")) -> HTMLResponse:
+        """Apply from the posting's own page, as the signed-in student or graduate. A refused
+        application (duplicate, closed) shows a message on the page."""
         try:
-            application_model.create_application(user_id, posting_id, cover_letter.strip() or None)
+            application_model.create_application(policy.applicant(), posting_id, cover_letter.strip() or None)
         except HTTPException as error:
             if error.status_code == 404 and error.detail == "Job posting not found":
                 raise

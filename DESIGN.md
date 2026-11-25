@@ -419,6 +419,35 @@ Inside a card-shaped wrapper (14 px radius, 1 px Hairline, scrolls sideways on s
 **Role:** a short state word.
 Fully round, 3 × 10 px padding, IBM Plex Mono badge size, colours from §2.4. Never more than two words.
 
+### Navbar Account
+**Role:** the right end of the navbar (ddd.md 4.1.3).
+A guest sees "Giriş yap" (Archive Gray text link, Panel on hover) and the Register Button; the management links are hidden. A signed-in user sees a pill (Ledger Panel, 1 px Hairline, fully round) with a 28 px avatar, the first name in Inter 600 13 px and the role in mono 10 px Gold Tint, linking to their profile, and a small ghost "Çıkış" button (a form posting to `/logout`). An admin also sees "Approvals" among the links.
+
+### Login Page
+**Role:** `/login` (Turkish, public).
+Compact Page Hero (`GİRİŞ`, "Hesabına *giriş yap*") → one featured card, at most 480 px wide: a note when the page was asked for (`?next=`), email, password with "Göster / Gizle", "Beni hatırla (30 gün)", the primary button, and under a divider "Hesabın yok mu? Kayıt ol". A refused login shows one Alert with the reason; the email stays, the password does not. The registration page links back with "Hesabın var mı? Giriş yap" and a ghost "Hesabım var, giriş yap" in its hero.
+
+### Fixed Value
+**Role:** a form value the user may not change (the author, the poster, the applicant: always the signed-in user).
+A 40 px row with a 1 px dashed Hairline and 10 px radius, the value in Paper Text 14 px, under the usual label; it replaces the select an admin would see.
+
+### Register Button
+**Role:** the one call to action in the navbar, on every page.
+"Register" in Inter 600 14 px Gold Tint with a 1 px gold hairline at 55 %, 10 px radius, right of the links; hover and the registration page itself fill it with gold at 12 %. It is the only gold element of the navbar besides the active underline.
+
+### Registration Page
+**Role:** `/register` (Turkish, public; ddd.md §4.1.2).
+Compact Page Hero (`MEZUN AĞINA KATIL`, "Hesabını *oluştur*") → two columns (1.7fr / 1fr, one below 900 px): a featured form card and a sticky side column ("Nasıl çalışır?" three numbered steps, "Hangi e-posta?" with the domain of each role).
+- **Role cards:** four radio cards in a row (two below 900 px) on Inset Field, the role in Inter 600 and the email it needs in mono 10 px; the chosen card gets an İÜ Green border, a Forest tint and a gold bottom edge. The page script shows only the chosen role's fields (others hidden and disabled), changes the labels ("Bölüm" → "Birim" for staff, "Beklenen mezuniyet yılı" for students), the email placeholder and the document hint. Without JavaScript every field stays visible; the server checks everything.
+- **Fields:** the usual Form Field; a hint line in 12 px Archive Gray; an error in 13 px Soft Red under the field with the field's border turned red; an error summary Alert above the form.
+- **Password:** a "Göster / Gizle" ghost button and a 3 px strength bar (Soft Red → Gold Tint → Green Tint over four levels).
+- **Document:** a drop zone: 1.5 px dashed border on Inset Field, 14 px radius; the file input covers it, so clicking or dropping works; hover and drag turn it green, a chosen file makes the border solid and shows the file name.
+- **Done page:** compact hero "Başvurun *alındı*" and the three steps with the first ticked.
+
+### Review Card
+**Role:** one pending registration on `/admin/registrations` (English, management).
+A card: avatar, name, account number and role badge; the role's fields as a mono-label list; an "Open document · PDF 230 KB" ghost button with the original file name; a footer with Approve (primary) and a reason input with Reject (danger). Above the list: a success Alert after a decision, a gold note that the page is open until the login task, and stat tiles by role.
+
 ### Role Badge
 **Role:** a user's role (ddd.md §4.1.1) in the users table, on a profile and in the Faculty and staff list.
 The Status Badge, one colour per role from the same palette: **Student** Navy Tint on Registry Navy, **Graduate** Green Tint on Forest, **Academic** Gold Tint on gold at 12 %, **Staff** Paper Text on Raised Panel, **Admin** Soft Red on red at 10 %. Under the album, academic and administrative staff are plain name cards (avatar, name, department, role badge) in a `repeat(auto-fill, minmax(260px, 1fr))` grid; the album photos stay for students and graduates.

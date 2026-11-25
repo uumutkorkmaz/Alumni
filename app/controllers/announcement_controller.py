@@ -2,6 +2,7 @@ from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
+from app import policy
 from app.models import announcement as announcement_model
 from app.models import user as user_model
 from app.models.user import AUTHOR_ROLES
@@ -39,10 +40,12 @@ class AnnouncementController:
         self,
         title: str = Form(...),
         content: str = Form(...),
-        author_id: int = Form(...),
+        author_id: str = Form(""),
     ) -> RedirectResponse:
         try:
-            data = AnnouncementCreate(title=title, content=content, author_id=author_id)
+            data = AnnouncementCreate(
+                title=title, content=content, author_id=policy.author_for(int(author_id) if author_id.isdigit() else None)
+            )
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         announcement_model.create_announcement(data)
@@ -62,10 +65,14 @@ class AnnouncementController:
         announcement_id: int,
         title: str = Form(...),
         content: str = Form(...),
-        author_id: int = Form(...),
+        author_id: str = Form(""),
     ) -> RedirectResponse:
         try:
-            data = AnnouncementUpdate(title=title, content=content, author_id=author_id)
+            data = AnnouncementUpdate(
+                title=title, content=content,
+                author_id=int(author_id) if (policy.is_admin() and author_id.isdigit())
+                else announcement_model.get_announcement(announcement_id)["author_id"],
+            )
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_context=False))
         announcement_model.partial_update_announcement(announcement_id, data)

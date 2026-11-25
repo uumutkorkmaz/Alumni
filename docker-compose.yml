@@ -10,6 +10,8 @@ services:
       - ./migrations:/code/migrations
       - ./alembic.ini:/code/alembic.ini
       - ./logs:/code/logs
+      # Registration documents (ddd.md 4.1.2): kept outside app/static, ignored by git.
+      - ./uploads:/code/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -17,6 +19,9 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       TZ: ${TZ:-Europe/Istanbul}
       DEBUG_ROUTES: ${DEBUG_ROUTES:-0}
+      STUDENT_EMAIL_DOMAIN: ${STUDENT_EMAIL_DOMAIN:-ogr.iu.edu.tr}
+      STAFF_EMAIL_DOMAIN: ${STAFF_EMAIL_DOMAIN:-istanbul.edu.tr}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
 
   db:
     image: postgres:16
